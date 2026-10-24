@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -76,4 +77,51 @@ func humanStars(n int) string {
 		return fmt.Sprintf("%.1fk", float64(n)/1000)
 	}
 	return fmt.Sprint(n)
+}
+
+var (
+	cUp  = lipgloss.AdaptiveColor{Light: "#178A3A", Dark: "#4ADE80"}
+	sUp  = lipgloss.NewStyle().Foreground(cUp).Bold(true)
+	sSpk = lipgloss.NewStyle().Foreground(cUp)
+)
+
+// humanGain : 1240 → « +1.2k », -3 → « -3 ».
+func humanGain(n int) string {
+	if n < 0 {
+		return "-" + humanStars(-n)
+	}
+	return "+" + humanStars(n)
+}
+
+// spanLabel : durée de mesure arrondie, « 7 j » ou « 5 h ».
+func spanLabel(d time.Duration) string {
+	if d >= 24*time.Hour {
+		return fmt.Sprintf("%d j", int((d+12*time.Hour)/(24*time.Hour)))
+	}
+	return fmt.Sprintf("%d h", max(int(d.Hours()), 1))
+}
+
+// sparkline dessine l'évolution des étoiles avec des blocs ▁▂▃▄▅▆▇█
+// (les « width » derniers relevés).
+func sparkline(pts []StarPoint, width int) string {
+	if len(pts) < 2 || width < 2 {
+		return ""
+	}
+	if len(pts) > width {
+		pts = pts[len(pts)-width:]
+	}
+	lo, hi := pts[0].N, pts[0].N
+	for _, p := range pts {
+		lo, hi = min(lo, p.N), max(hi, p.N)
+	}
+	bars := []rune("▁▂▃▄▅▆▇█")
+	out := make([]rune, len(pts))
+	for i, p := range pts {
+		lvl := 0
+		if hi > lo {
+			lvl = (p.N - lo) * (len(bars) - 1) / (hi - lo)
+		}
+		out[i] = bars[lvl]
+	}
+	return string(out)
 }

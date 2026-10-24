@@ -196,8 +196,12 @@ func renderMarkdown(results []Result, now time.Time, showAll bool) string {
 			if lang == "" {
 				lang = "?"
 			}
-			fmt.Fprintf(&b, "- **[%s](%s)** ★ %d · %s · créé le %s\n  %s\n",
-				it.FullName, it.HTMLURL, it.Stars, lang,
+			gain := ""
+			if tr := it.Trend; tr.OK && tr.Gain != 0 {
+				gain = fmt.Sprintf(" (%s en %s)", humanGain(tr.Gain), spanLabel(tr.Span))
+			}
+			fmt.Fprintf(&b, "- **[%s](%s)** ★ %d%s · %s · créé le %s\n  %s\n",
+				it.FullName, it.HTMLURL, it.Stars, gain, lang,
 				it.CreatedAt.Format("02/01/2006"), desc)
 		}
 	}

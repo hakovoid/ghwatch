@@ -95,6 +95,7 @@ func TestSortFilterNewOnly(t *testing.T) {
 	if got := names(m.visible()); got[0] != "a/two" {
 		t.Fatalf("tri par étoiles attendu, got %v", got)
 	}
+	typeText(m, "s") // → progression
 	typeText(m, "s") // → plus récents
 	typeText(m, "s") // → nom
 	if got := names(m.visible()); got[0] != "a/one" || got[2] != "a/two" {

@@ -21,13 +21,14 @@ type sortMode int
 
 const (
 	sortStars sortMode = iota
+	sortTrend
 	sortRecent
 	sortName
 	sortModes
 )
 
 func (s sortMode) String() string {
-	return [...]string{"étoiles", "plus récents", "nom"}[s]
+	return [...]string{"étoiles", "progression", "plus récents", "nom"}[s]
 }
 
 type statusMsg string
@@ -178,6 +179,18 @@ func (m *model) visible() []Item {
 	}
 	sort.SliceStable(out, func(i, j int) bool {
 		switch m.sort {
+		case sortTrend:
+			gi, gj := out[i].Trend.Gain, out[j].Trend.Gain
+			if !out[i].Trend.OK {
+				gi = -1 << 30 // progression inconnue : en fin de liste
+			}
+			if !out[j].Trend.OK {
+				gj = -1 << 30
+			}
+			if gi != gj {
+				return gi > gj
+			}
+			return out[i].Stars > out[j].Stars
 		case sortRecent:
 			return out[i].CreatedAt.After(out[j].CreatedAt)
 		case sortName:
@@ -331,6 +344,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.sort = (m.sort + 1) % sortModes
 			m.resetView()
 			m.status = "tri : " + m.sort.String()
+			if m.sort == sortTrend {
+				m.status += " (étoiles gagnées sur " + spanLabel(m.cfg.trendWindow()) + ")"
+			}
 		case "n":
 			m.newOnly = !m.newOnly
 			m.resetView()
@@ -500,7 +516,11 @@ func (m *model) viewTabs() string {
 	if m.newOnly {
 		flags = append(flags, sTabBadge.Render("●")+sMuted.Render(" nouveautés"))
 	}
-	flags = append(flags, sKey.Render("⇅")+sMuted.Render(" "+m.sort.String()))
+	sortLabel := m.sort.String()
+	if m.sort == sortTrend {
+		sortLabel += " sur " + spanLabel(m.cfg.trendWindow())
+	}
+	flags = append(flags, sKey.Render("⇅")+sMuted.Render(" "+sortLabel))
 	right := strings.Join(flags, sRule.Render("  │  ")) + " "
 
 	if gap := m.width - lipgloss.Width(line) - lipgloss.Width(right); gap >= 2 {
@@ -562,6 +582,9 @@ func (m *model) viewItem(it Item, selected bool, width int) string {
 		title += " " + sNewBadge.Render("NEW")
 	}
 	stars := sStars.Render("★ " + humanStars(it.Stars))
+	if tr := it.Trend; tr.OK && tr.Gain > 0 {
+		stars = sUp.Render("▲ "+humanGain(tr.Gain)) + "  " + stars
+	}
 	gap := max(width-lipgloss.Width(cursor)-lipgloss.Width(title)-lipgloss.Width(stars)-1, 1)
 	line1 := cursor + title + strings.Repeat(" ", gap) + stars
 
@@ -613,7 +636,7 @@ func (m *model) viewDetail(width, height int) string {
 		row("Dernier commit", sDesc.Render(relTime(it.PushedAt))),
 	}, "\n")
 
-	parts := []string{title, "", desc, "", stats, "", facts}
+	parts := []string{title, "", desc, "", stats, m.viewTrend(it, inner), "", facts}
 
 	if len(it.Topics) > 0 {
 		var chips []string
@@ -636,6 +659,27 @@ func (m *model) viewDetail(width, height int) string {
 	parts = append(parts, "", link, sMuted.Render("⏎ ouvrir dans le navigateur"))
 
 	return box.Render(strings.Join(parts, "\n"))
+}
+
+// viewTrend : progression des étoiles et mini-graphique, pour le panneau de détail.
+func (m *model) viewTrend(it Item, width int) string {
+	tr := it.Trend
+	if !tr.OK {
+		return sMuted.Render("Progression mesurée à partir de la prochaine vérification")
+	}
+	var head string
+	switch {
+	case tr.Gain > 0:
+		head = sUp.Render("▲ "+humanGain(tr.Gain)+" ★") + sMuted.Render(" en "+spanLabel(tr.Span))
+	case tr.Gain < 0:
+		head = sErr.Render("▼ "+humanGain(tr.Gain)+" ★") + sMuted.Render(" en "+spanLabel(tr.Span))
+	default:
+		head = sMuted.Render("stable sur " + spanLabel(tr.Span))
+	}
+	if spk := sparkline(tr.Points, min(width-2, 40)); spk != "" {
+		head += "\n" + sSpk.Render(spk) + sMuted.Render(fmt.Sprintf("  %d relevés", len(tr.Points)))
+	}
+	return head
 }
 
 func (m *model) viewFooter() string {
@@ -709,7 +753,7 @@ func (m *model) viewHelp() string {
 		{"Affichage", [][2]string{
 			{"/", "filtrer (nom, description, langage, topic)"},
 			{"esc", "effacer le filtre"},
-			{"s", "trier : étoiles → plus récents → nom"},
+			{"s", "trier : étoiles → progression → récents → nom"},
 			{"n", "nouveautés uniquement / tout"},
 		}},
 		{"", [][2]string{{"?", "aide"}, {"q  ctrl+c", "quitter"}}},

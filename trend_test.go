@@ -87,3 +87,34 @@ func TestTrendWindowConfig(t *testing.T) {
 		t.Errorf("1d = %v", d)
 	}
 }
+
+func TestSparklineAndLabels(t *testing.T) {
+	pts := []StarPoint{{N: 10}, {N: 20}, {N: 30}, {N: 80}}
+	if s := sparkline(pts, 10); s != "▁▂▃█" {
+		t.Errorf("sparkline = %q", s)
+	}
+	if s := sparkline(pts[:1], 10); s != "" {
+		t.Errorf("un seul point : %q", s)
+	}
+	if s := sparkline([]StarPoint{{N: 5}, {N: 5}}, 10); s != "▁▁" {
+		t.Errorf("valeurs égales : %q", s)
+	}
+	if got := humanGain(1240); got != "+1.2k" {
+		t.Errorf("humanGain = %q", got)
+	}
+	if got := spanLabel(7*day - time.Hour); got != "7 j" {
+		t.Errorf("spanLabel = %q", got)
+	}
+}
+
+func TestSortByTrend(t *testing.T) {
+	m := testModel(t)
+	items := m.results[0].Items
+	items[0].Trend = Trend{OK: true, Gain: 900} // a/one, 10 ★
+	items[1].Trend = Trend{OK: false}           // a/two, 500 ★ : inconnue → fin
+	items[2].Trend = Trend{OK: true, Gain: 50}  // a/three
+	typeText(m, "s")
+	if got := names(m.visible()); got[0] != "a/one" || got[2] != "a/two" {
+		t.Fatalf("tri par progression : %v", got)
+	}
+}
