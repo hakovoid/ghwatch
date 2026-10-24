@@ -25,6 +25,12 @@ vérifiées par le serveur officiel de Go) : commite-le ensuite.
 - Liste des dépôts : étoiles, langage, date de création, badge **NEW**.
 - Panneau de détail à droite (terminal ≥ 100 colonnes) : description, forks,
   issues, licence, dernier commit, topics.
+- Noms de dépôts et URL **cliquables** (Cmd+clic ou Ctrl+clic selon le
+  terminal), dans les terminaux qui gèrent les liens OSC 8 : iTerm2, WezTerm,
+  Kitty, Ghostty, Windows Terminal, GNOME Terminal, Konsole, VS Code…
+  Le Terminal de macOS ne les gère pas : utilise `Entrée` ou `c`. Sous tmux,
+  il faut la version 3.4+ avec `set -ga terminal-features "*:hyperlinks"`.
+  Si des caractères parasites s'affichent, lance avec `-links=false`.
 - Rafraîchissement automatique selon `interval`, compte à rebours en haut à droite.
 - Thème qui s'adapte aux terminaux clairs et sombres.
 
@@ -32,7 +38,8 @@ vérifiées par le serveur officiel de Go) : commite-le ensuite.
 |---|---|
 | `↑` `↓` / `j` `k` | dépôt précédent / suivant |
 | `←` `→` / `h` `l` / `tab` | veille précédente / suivante |
-| `Entrée` / `o` | ouvrir le dépôt dans le navigateur |
+| `Entrée` / `o` / clic | ouvrir le dépôt dans le navigateur |
+| `c` | copier le lien du dépôt |
 | `/` | filtrer (nom, description, langage, topic) — `esc` pour effacer |
 | `s` | trier : étoiles → progression → plus récents → nom |
 | `n` | nouveautés uniquement / tout |
