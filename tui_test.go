@@ -179,7 +179,11 @@ func TestCopyLink(t *testing.T) {
 
 	m := testModel(t)
 	m.results[0].Items[1].HTMLURL = "https://github.com/a/two"
-	typeText(m, "c")
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+	if cmd == nil {
+		t.Fatal("la copie doit se faire en tâche de fond")
+	}
+	m.Update(cmd())
 	if got != "https://github.com/a/two" || !strings.Contains(m.status, "copié") {
 		t.Fatalf("copié %q, statut %q", got, m.status)
 	}

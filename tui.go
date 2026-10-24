@@ -361,10 +361,14 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.refresh()
 		case "c":
 			if it, ok := m.selected(); ok {
-				via := copyToClipboard(it.HTMLURL)
-				m.status = "lien copié : " + it.HTMLURL
-				if via == "terminal" {
-					m.status += " (via le terminal)"
+				url := it.HTMLURL
+				// en tâche de fond : un outil de presse-papiers lent ne fige pas l'écran
+				return m, func() tea.Msg {
+					msg := "lien copié : " + url
+					if copyToClipboard(url) == "terminal" {
+						msg += " (via le terminal)"
+					}
+					return statusMsg(msg)
 				}
 			}
 		case "enter", "o":
