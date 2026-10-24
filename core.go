@@ -77,17 +77,23 @@ func check(cfg *Config, token string, showAll bool) {
 	results := Fetch(cfg, token, now)
 	report := renderMarkdown(results, now, showAll)
 	fmt.Println(report)
-
-	if cfg.ReportsDir != "" {
-		if err := os.MkdirAll(cfg.ReportsDir, 0o755); err == nil {
-			name := filepath.Join(cfg.ReportsDir, now.Format("2006-01-02_15h04")+".md")
-			if err := os.WriteFile(name, []byte(report), 0o644); err != nil {
-				log.Printf("écriture du rapport: %v", err)
-			} else {
-				log.Printf("rapport enregistré : %s", name)
-			}
-		}
+	if name, err := saveReport(cfg, report, now); err != nil {
+		log.Printf("écriture du rapport: %v", err)
+	} else if name != "" {
+		log.Printf("rapport enregistré : %s", name)
 	}
+}
+
+// saveReport écrit le rapport dans reports_dir (si configuré) et renvoie son chemin.
+func saveReport(cfg *Config, report string, now time.Time) (string, error) {
+	if cfg.ReportsDir == "" {
+		return "", nil
+	}
+	if err := os.MkdirAll(cfg.ReportsDir, 0o755); err != nil {
+		return "", err
+	}
+	name := filepath.Join(cfg.ReportsDir, now.Format("2006-01-02_15h04")+".md")
+	return name, os.WriteFile(name, []byte(report), 0o644)
 }
 
 func renderMarkdown(results []Result, now time.Time, showAll bool) string {

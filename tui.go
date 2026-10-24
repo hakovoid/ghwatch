@@ -17,6 +17,13 @@ const itemHeight = 3 // 2 lignes + 1 ligne d'espace
 
 type statusMsg string
 
+type clockMsg time.Time
+
+// clock réveille la TUI chaque seconde (compte à rebours, auto-refresh).
+func clock() tea.Cmd {
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg { return clockMsg(t) })
+}
+
 type fetchedMsg struct {
 	results []Result
 	at      time.Time
@@ -35,6 +42,8 @@ type model struct {
 	loading bool
 	spin    spinner.Model
 	lastRun time.Time
+	nextRun time.Time
+	now     time.Time
 
 	width, height int
 	status        string
@@ -82,6 +91,20 @@ func fetchCmd(cfg *Config, token string) tea.Cmd {
 }
 
 func (m *model) Init() tea.Cmd {
+	return tea.Batch(m.spin.Tick, fetchCmd(m.cfg, m.token), clock())
+}
+
+// refresh recharge la config (thèmes et fréquence modifiés à chaud) puis relance la recherche.
+func (m *model) refresh() tea.Cmd {
+	if m.loading {
+		return nil
+	}
+	if c, d, err := loadConfigWithInterval(m.cfgPath, m.intervalOverride); err == nil {
+		m.cfg, m.interval = c, d
+	} else {
+		m.status = "config non rechargée (ancienne conservée) : " + err.Error()
+	}
+	m.loading = true
 	return tea.Batch(m.spin.Tick, fetchCmd(m.cfg, m.token))
 }
 
@@ -137,15 +160,29 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		m.moveCursor(0)
 
+	case clockMsg:
+		m.now = time.Time(msg)
+		if !m.loading && !m.nextRun.IsZero() && !m.now.Before(m.nextRun) {
+			return m, tea.Batch(m.refresh(), clock())
+		}
+		return m, clock()
+
 	case spinner.TickMsg:
+		if !m.loading {
+			return m, nil // arrête l'animation entre deux recherches
+		}
 		var cmd tea.Cmd
 		m.spin, cmd = m.spin.Update(msg)
 		return m, cmd
 
 	case fetchedMsg:
 		m.results, m.lastRun, m.loading = msg.results, msg.at, false
+		m.nextRun = msg.at.Add(m.interval)
 		m.resetCursors()
 		m.moveCursor(0)
+		if _, err := saveReport(m.cfg, renderMarkdown(msg.results, msg.at, false), msg.at); err != nil {
+			m.status = "rapport non enregistré : " + err.Error()
+		}
 
 	case statusMsg:
 		m.status = string(msg)
@@ -155,6 +192,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
+		case "r":
+			return m, m.refresh()
 		case "enter", "o":
 			if it, ok := m.selected(); ok {
 				url := it.HTMLURL
@@ -215,7 +254,13 @@ func (m *model) viewHeader() string {
 	case m.loading:
 		right = m.spin.View() + " recherche en cours…"
 	case !m.lastRun.IsZero():
-		right = "vérifié à " + m.lastRun.Format("15:04")
+		now := m.now
+		if now.IsZero() {
+			now = time.Now()
+		}
+		right = "vérifié à " + m.lastRun.Format("15:04") + "  ·  prochaine dans " +
+			lipgloss.NewStyle().Foreground(cAccent).Background(cBarBg).Render(humanDur(m.nextRun.Sub(now))) +
+			sBar.Render("  ·  tous les "+humanDur(m.interval))
 	}
 	right = sBar.Render(right + " ")
 	gap := max(m.width-lipgloss.Width(left)-lipgloss.Width(right), 0)
@@ -369,7 +414,7 @@ func (m *model) viewFooter() string {
 		return ansi.Truncate(" "+sKey.Render("›")+" "+sDesc.Render(m.status), m.width, "…")
 	}
 	keys := []struct{ k, v string }{
-		{"↑↓", "naviguer"}, {"←→", "veilles"}, {"⏎", "ouvrir"}, {"q", "quitter"},
+		{"↑↓", "naviguer"}, {"←→", "veilles"}, {"⏎", "ouvrir"}, {"r", "actualiser"}, {"q", "quitter"},
 	}
 	var parts []string
 	for _, k := range keys {
@@ -403,4 +448,27 @@ func relTime(t time.Time) string {
 		return fmt.Sprintf("il y a %d mois", days/30)
 	}
 	return fmt.Sprintf("il y a %d an(s)", days/365)
+}
+
+// humanDur : 90s → « 1 min 30 s », 26h → « 1 j 2 h ».
+func humanDur(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	d = d.Round(time.Second)
+	days := int(d.Hours()) / 24
+	h := int(d.Hours()) % 24
+	mn := int(d.Minutes()) % 60
+	sec := int(d.Seconds()) % 60
+	switch {
+	case days > 0 && h > 0:
+		return fmt.Sprintf("%d j %d h", days, h)
+	case days > 0:
+		return fmt.Sprintf("%d j", days)
+	case h > 0:
+		return fmt.Sprintf("%d h %02d min", h, mn)
+	case mn > 0:
+		return fmt.Sprintf("%d min %02d s", mn, sec)
+	}
+	return fmt.Sprintf("%d s", sec)
 }
