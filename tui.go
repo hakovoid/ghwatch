@@ -15,6 +15,8 @@ import (
 
 const itemHeight = 3 // 2 lignes + 1 ligne d'espace
 
+type statusMsg string
+
 type fetchedMsg struct {
 	results []Result
 	at      time.Time
@@ -35,6 +37,7 @@ type model struct {
 	lastRun time.Time
 
 	width, height int
+	status        string
 }
 
 func runTUI(cfgPath, intervalOverride, token string) error {
@@ -90,6 +93,15 @@ func (m *model) visible() []Item {
 	return m.results[m.tab].Items
 }
 
+// selected renvoie le dépôt sous le curseur.
+func (m *model) selected() (Item, bool) {
+	items := m.visible()
+	if len(items) == 0 || m.tab >= len(m.cursor) {
+		return Item{}, false
+	}
+	return items[min(m.cursor[m.tab], len(items)-1)], true
+}
+
 func (m *model) listHeight() int {
 	return max(m.height-5, itemHeight) // barre de titre, onglets, règle, pied
 }
@@ -135,10 +147,24 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.resetCursors()
 		m.moveCursor(0)
 
+	case statusMsg:
+		m.status = string(msg)
+
 	case tea.KeyMsg:
+		m.status = ""
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
+		case "enter", "o":
+			if it, ok := m.selected(); ok {
+				url := it.HTMLURL
+				return m, func() tea.Msg {
+					if err := openURL(url); err != nil {
+						return statusMsg("impossible d'ouvrir le navigateur : " + err.Error())
+					}
+					return statusMsg("ouvert : " + url)
+				}
+			}
 		case "up", "k":
 			m.moveCursor(-1)
 		case "down", "j":
@@ -170,8 +196,15 @@ func (m *model) View() string {
 	tabs := m.viewTabs()
 	rule := sRule.Render(strings.Repeat("─", m.width))
 	footer := m.viewFooter()
-	body := lipgloss.NewStyle().Height(m.listHeight()).MaxHeight(m.listHeight()).
-		Render(m.viewList(m.width))
+	h := m.listHeight()
+	var body string
+	if m.width >= 100 { // assez large : liste à gauche, détail à droite
+		lw := m.width * 56 / 100
+		list := lipgloss.NewStyle().Width(lw).Height(h).MaxHeight(h).Render(m.viewList(lw - 1))
+		body = lipgloss.JoinHorizontal(lipgloss.Top, list, m.viewDetail(m.width-lw, h))
+	} else {
+		body = lipgloss.NewStyle().Height(h).MaxHeight(h).Render(m.viewList(m.width))
+	}
 	return lipgloss.JoinVertical(lipgloss.Left, header, tabs, rule, body, footer)
 }
 
@@ -268,9 +301,75 @@ func (m *model) viewItem(it Item, selected bool, width int) string {
 	return ansi.Truncate(line1, width, "") + "\n" + ansi.Truncate(line2, width-1, "…")
 }
 
+func (m *model) viewDetail(width, height int) string {
+	box := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(cFaint).
+		Padding(0, 2).Width(width - 2).Height(height - 2).MaxHeight(height)
+	it, ok := m.selected()
+	if !ok {
+		return box.Render("")
+	}
+	inner := width - 6
+
+	owner, name, _ := strings.Cut(it.FullName, "/")
+	title := sOwner.Render(owner+"/") + sRepoSel.Render(name)
+	if it.New {
+		title += " " + sNewBadge.Render("NEW")
+	}
+
+	desc := strings.TrimSpace(it.Description)
+	if desc == "" {
+		desc = sMuted.Render("Pas de description.")
+	}
+	desc = sDesc.Render(ansi.Wordwrap(desc, inner, " "))
+
+	stats := sStars.Render("★ "+humanStars(it.Stars)) + sMuted.Render("   ⑂ "+humanStars(it.Forks)+
+		"   ◎ "+humanStars(it.Issues)+" issues")
+
+	license := "—"
+	if it.License != nil && it.License.SPDX != "" && it.License.SPDX != "NOASSERTION" {
+		license = it.License.SPDX
+	}
+	row := func(k, v string) string {
+		return sMuted.Render(fmt.Sprintf("%-15s", k)) + v
+	}
+	facts := strings.Join([]string{
+		row("Langage", langBadge(it.Language)),
+		row("Licence", sDesc.Render(license)),
+		row("Créé", sDesc.Render(it.CreatedAt.Format("02/01/2006"))+sMuted.Render("  ("+relTime(it.CreatedAt)+")")),
+		row("Dernier commit", sDesc.Render(relTime(it.PushedAt))),
+	}, "\n")
+
+	parts := []string{title, "", desc, "", stats, "", facts}
+
+	if len(it.Topics) > 0 {
+		var chips []string
+		lineW := 0
+		var lines []string
+		for _, t := range it.Topics {
+			c := sTopic.Render(t)
+			if lineW > 0 && lineW+lipgloss.Width(c)+1 > inner {
+				lines = append(lines, strings.Join(chips, " "))
+				chips, lineW = nil, 0
+			}
+			chips = append(chips, c)
+			lineW += lipgloss.Width(c) + 1
+		}
+		lines = append(lines, strings.Join(chips, " "))
+		parts = append(parts, "", strings.Join(lines, "\n"))
+	}
+
+	link := lipgloss.NewStyle().Foreground(cAccent2).Underline(true).Render(ansi.Truncate(it.HTMLURL, inner, "…"))
+	parts = append(parts, "", link, sMuted.Render("⏎ ouvrir dans le navigateur"))
+
+	return box.Render(strings.Join(parts, "\n"))
+}
+
 func (m *model) viewFooter() string {
+	if m.status != "" {
+		return ansi.Truncate(" "+sKey.Render("›")+" "+sDesc.Render(m.status), m.width, "…")
+	}
 	keys := []struct{ k, v string }{
-		{"↑↓", "naviguer"}, {"←→", "veilles"}, {"q", "quitter"},
+		{"↑↓", "naviguer"}, {"←→", "veilles"}, {"⏎", "ouvrir"}, {"q", "quitter"},
 	}
 	var parts []string
 	for _, k := range keys {
