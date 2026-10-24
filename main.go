@@ -8,10 +8,12 @@
 //	ghwatch -interval 6h         # remplace l'interval de la config
 //	ghwatch -all                 # affiche aussi les dépôts déjà vus
 //	ghwatch -tui                 # interface interactive dans le terminal
+//	ghwatch -version             # version installée
 package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -26,7 +28,13 @@ func main() {
 	showAll := flag.Bool("all", false, "afficher aussi les dépôts déjà vus")
 	tui := flag.Bool("tui", false, "interface interactive dans le terminal")
 	flag.BoolVar(&linksEnabled, "links", true, "liens cliquables dans la TUI (désactiver si le terminal affiche des caractères parasites)")
+	showVersion := flag.Bool("version", false, "afficher la version et quitter")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println(versionInfo())
+		return
+	}
 
 	if *tui {
 		if err := runTUI(*cfgPath, *intervalFlag, os.Getenv("GITHUB_TOKEN")); err != nil {

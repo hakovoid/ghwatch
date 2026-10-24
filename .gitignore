@@ -3,3 +3,6 @@ ghwatch-state.json
 reports/
 *.tmp
 ghwatch-history.json
+
+# binaires de release
+dist/

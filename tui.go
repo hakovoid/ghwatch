@@ -1145,7 +1145,7 @@ func (m *model) viewHelp() string {
 			b.WriteString(sKey.Render(fmt.Sprintf("%-20s", k[0])) + sDesc.Render(k[1]) + "\n")
 		}
 	}
-	b.WriteString("\n" + sMuted.Render(fmt.Sprintf("Vérification tous les %s · %s", humanDur(m.interval), m.cfgPath)))
+	b.WriteString("\n" + sMuted.Render(fmt.Sprintf("ghwatch %s · vérification tous les %s · %s", buildVersion(), humanDur(m.interval), m.cfgPath)))
 	b.WriteString("\n" + sMuted.Render("Une touche pour fermer"))
 	pad := 1
 	if compact {
