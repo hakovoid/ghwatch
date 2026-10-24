@@ -35,6 +35,13 @@ export GITHUB_TOKEN=ghp_xxx   # recommandé : https://github.com/settings/tokens
 Go 1.24 ou plus récent est nécessaire. Les dépendances sont téléchargées au
 premier `go build` et vérifiées grâce au fichier `go.sum`.
 
+Pour connaître la version installée : `./ghwatch -version`.
+
+Des binaires prêts à l'emploi (Linux, macOS, Windows) sont aussi disponibles
+dans les [releases](https://github.com/hakovoid/ghwatch/releases) : télécharge
+l'archive de ta plateforme, décompresse-la et lance `./ghwatch -tui` dans le
+dossier (il contient un `config.json` d'exemple).
+
 ## Interface (TUI)
 
 ```bash
@@ -255,6 +262,32 @@ d'état, 90 jours conservés).
 utilise plutôt `pushed_within` (activité récente) avec un seuil d'étoiles
 élevé, et trie par progression. C'est le rôle de la veille
 « IA & agents · populaires et actifs » de la config d'exemple.
+
+## Versions et releases
+
+ghwatch suit [SemVer](https://semver.org/lang/fr/) : `vMAJEUR.MINEUR.CORRECTIF`.
+
+- **CORRECTIF** (`v0.3.1`) : corrections de bugs, sans changement de comportement.
+- **MINEUR** (`v0.4.0`) : nouvelles fonctionnalités, compatibles avec ta
+  config et ton fichier d'état.
+- **MAJEUR** (`v1.0.0`) : changement incompatible (format de config, options…).
+  Tant qu'on est en `0.x`, l'outil est considéré comme jeune et un MINEUR
+  peut encore casser des choses ; ce sera alors indiqué dans les notes.
+
+Chaque version est un **tag git** (`v0.3.0`) et une **release GitHub** avec
+ses notes (tirées de [`CHANGELOG.md`](CHANGELOG.md)) et ses binaires.
+La version n'est écrite nulle part dans le code : `go build` la lit dans le
+tag git. Un binaire compilé entre deux tags affiche une version de
+développement (`v0.3.1-0.20261025…-abc1234`), et `+dirty` si le code a été
+modifié sans être commité.
+
+Publier une version :
+
+1. Ajouter une section `## [0.4.0] — AAAA-MM-JJ` en haut de `CHANGELOG.md`
+   (et le lien de comparaison en bas), commiter et pousser sur `main`.
+2. Lancer `scripts/release.sh v0.4.0` : il vérifie que tout est propre,
+   lance les tests, crée et pousse le tag, compile les binaires dans `dist/`
+   et publie la release avec les notes de la section.
 
 ## Lancer automatiquement
 

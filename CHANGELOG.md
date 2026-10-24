@@ -3,7 +3,19 @@
 Toutes les évolutions notables de ghwatch sont listées ici, de la plus
 récente à la plus ancienne. Format inspiré de
 [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), numérotation
-[SemVer](https://semver.org/lang/fr/).
+[SemVer](https://semver.org/lang/fr/) (voir « Versions et releases » dans le
+README).
+
+## [0.3.0] — 2026-10-24
+
+### Ajouté
+
+- Option `-version` : version, commit et date de compilation. La version est
+  aussi rappelée dans l'aide de la TUI (`?`).
+- Releases GitHub avec binaires prêts à l'emploi pour Linux (amd64, arm64),
+  macOS (Intel, Apple Silicon) et Windows, et leurs sommes de contrôle.
+- Script `scripts/release.sh` : publie une version en une commande (tests,
+  tag, binaires, release avec les notes de ce fichier).
 
 ## [0.2.0] — 2026-10-24
 
@@ -72,5 +84,6 @@ Première version publiée.
 - Liens cliquables (OSC 8), copie du lien (`c`), ouverture dans le navigateur.
 - Respect des limites de l'API Search avec ou sans token.
 
+[0.3.0]: https://github.com/hakovoid/ghwatch/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/hakovoid/ghwatch/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/hakovoid/ghwatch/releases/tag/v0.1.0
