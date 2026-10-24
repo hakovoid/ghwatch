@@ -1,16 +1,46 @@
 # ghwatch
 
-Veille des dépôts GitHub récents ou populaires, par thème, langage et date.
-Aucune dépendance : seulement la bibliothèque standard de Go.
+Veille des dépôts GitHub récents ou populaires, par thème, langage et date,
+en mode texte ou avec une interface interactive dans le terminal (TUI).
 
 ## Installation
 
 ```bash
+go mod tidy                   # la première fois : télécharge et vérifie les dépendances
 go build -o ghwatch .
 export GITHUB_TOKEN=ghp_xxx   # recommandé : https://github.com/settings/tokens (aucun scope requis)
 ```
 
-## Utilisation
+`go mod tidy` crée le fichier `go.sum` (sommes de contrôle des dépendances,
+vérifiées par le serveur officiel de Go) : commite-le ensuite.
+
+## Interface (TUI)
+
+```bash
+./ghwatch -tui
+./ghwatch -tui -interval 6h
+```
+
+- Un onglet par veille, avec le nombre de nouveautés.
+- Liste des dépôts : étoiles, langage, date de création, badge **NEW**.
+- Panneau de détail à droite (terminal ≥ 100 colonnes) : description, forks,
+  issues, licence, dernier commit, topics.
+- Rafraîchissement automatique selon `interval`, compte à rebours en haut à droite.
+- Thème qui s'adapte aux terminaux clairs et sombres.
+
+| Touche | Action |
+|---|---|
+| `↑` `↓` / `j` `k` | dépôt précédent / suivant |
+| `←` `→` / `h` `l` / `tab` | veille précédente / suivante |
+| `Entrée` / `o` | ouvrir le dépôt dans le navigateur |
+| `/` | filtrer (nom, description, langage, topic) — `esc` pour effacer |
+| `s` | trier : étoiles → plus récents → nom |
+| `n` | nouveautés uniquement / tout |
+| `r` | actualiser maintenant (recharge la config) |
+| `?` | aide |
+| `q` | quitter |
+
+## Mode texte
 
 ```bash
 ./ghwatch                 # tourne en continu, vérifie tous les "interval"
@@ -20,7 +50,7 @@ export GITHUB_TOKEN=ghp_xxx   # recommandé : https://github.com/settings/tokens
 ./ghwatch -config x.json  # autre fichier de config
 ```
 
-Chaque passage affiche le rapport et l'enregistre dans `reports/AAAA-MM-JJ_HHhMM.md`.
+Chaque passage (texte ou TUI) affiche le rapport et l'enregistre dans `reports/AAAA-MM-JJ_HHhMM.md`.
 Seuls les dépôts **jamais vus** sont listés (mémorisés dans `ghwatch-state.json`).
 Pour repartir de zéro, supprime ce fichier.
 
