@@ -67,6 +67,17 @@ htmx in:name,description pushed:>2026-10-15
 À chaque intervalle, ghwatch relance **chaque veille de `config.json`**, et
 seulement celles-ci, sur l'API de recherche GitHub. Il compare les résultats
 aux dépôts déjà vus : ceux qui n'ont jamais été vus sont marqués **NEW**.
+
+La config fournie surveille par défaut :
+
+- **IA & agents · nouveautés de la semaine** : projets créés depuis moins de
+  7 jours, ≥ 50 ★, qui ont un topic `llm`, `ai-agents`, `claude-code`, `mcp`,
+  `agent-skills` ou `rag`, ou « claude », « agent » ou « llm » dans leur nom
+  ou leur description.
+- **IA & agents · ce qui monte ce mois-ci** : projets de moins de 30 jours
+  déjà au-dessus de 500 ★ (ceux qui décollent, même s'ils ont raté la
+  première semaine).
+- **Projets Go qui montent** et **Outils CLI récents**.
 Pour changer ce qui est surveillé, modifie les veilles dans `config.json`
 (relu à chaque passage) ou enregistre une recherche avec `w`.
 
@@ -107,8 +118,39 @@ fréquence sans redémarrer (la nouvelle fréquence s'applique au passage suivan
 | `created_within` | `"7d"` | Créés depuis moins de… |
 | `pushed_within` | `"2d"` | Commit récent depuis moins de… |
 | `query` | `"cli in:description"` | Syntaxe de recherche GitHub brute |
+| `any` | `["topic:llm", "topic:mcp", "claude in:name,description"]` | Termes combinés en **OU** (voir ci-dessous) |
 | `sort` | `"stars"` / `"forks"` / `"updated"` | Tri (défaut : stars) |
 | `limit` | `10` | Nombre de résultats (max 100) |
+
+### ET ou OU ?
+
+Les critères d'une veille (`topics`, `language`, `min_stars`, `query`…) se
+combinent en **ET** : `"topics": ["llm", "claude-code"]` exige les deux topics
+à la fois. Or les topics sont choisis par les auteurs et souvent incomplets :
+un projet d'agent IA peut n'avoir ni `llm` ni aucun topic.
+
+Pour ratisser large, utilise **`any`** : chaque terme lance sa propre
+recherche (avec les critères communs de la veille), puis les résultats sont
+fusionnés, dédoublonnés, triés et limités à `limit`.
+
+```json
+{
+  "name": "IA & agents · nouveautés de la semaine",
+  "any": ["topic:llm", "topic:ai-agents", "topic:claude-code", "topic:mcp",
+          "claude in:name,description", "agent in:name,description"],
+  "created_within": "7d",
+  "min_stars": 50,
+  "limit": 15
+}
+```
+
+Un terme peut être un topic (`topic:mcp`), un mot cherché dans le nom ou la
+description (`claude in:name,description`), ou même dans le README
+(`skill in:readme`, plus large mais plus bruyant).
+
+Chaque terme compte comme une recherche : GitHub en autorise 30 par minute
+avec un token et 10 sans. ghwatch espace les requêtes en conséquence
+(2 s avec token, 6,5 s sans) : avec beaucoup de termes, configure un token.
 
 ## Lancer automatiquement
 

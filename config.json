@@ -4,10 +4,32 @@
   "reports_dir": "reports",
   "watches": [
     {
-      "name": "Nouveaux projets IA de la semaine",
-      "topics": ["llm"],
+      "name": "IA & agents · nouveautés de la semaine",
+      "any": [
+        "topic:llm",
+        "topic:ai-agents",
+        "topic:claude-code",
+        "topic:mcp",
+        "topic:agent-skills",
+        "topic:rag",
+        "claude in:name,description",
+        "agent in:name,description",
+        "llm in:name,description"
+      ],
       "created_within": "7d",
       "min_stars": 50,
+      "limit": 15
+    },
+    {
+      "name": "IA & agents · ce qui monte ce mois-ci",
+      "any": [
+        "topic:llm",
+        "topic:ai-agents",
+        "topic:claude-code",
+        "topic:mcp"
+      ],
+      "created_within": "30d",
+      "min_stars": 500,
       "limit": 10
     },
     {
