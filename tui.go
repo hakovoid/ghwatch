@@ -359,6 +359,14 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "r":
 			return m, m.refresh()
+		case "c":
+			if it, ok := m.selected(); ok {
+				via := copyToClipboard(it.HTMLURL)
+				m.status = "lien copié : " + it.HTMLURL
+				if via == "terminal" {
+					m.status += " (via le terminal)"
+				}
+			}
 		case "enter", "o":
 			if it, ok := m.selected(); ok {
 				url := it.HTMLURL
@@ -657,7 +665,7 @@ func (m *model) viewDetail(width, height int) string {
 
 	link := hyperlink(it.HTMLURL, lipgloss.NewStyle().Foreground(cAccent2).Underline(true).
 		Render(ansi.Truncate(it.HTMLURL, inner, "…")))
-	parts = append(parts, "", link, sMuted.Render("clic ou ⏎ pour ouvrir"))
+	parts = append(parts, "", link, sMuted.Render("clic ou ⏎ pour ouvrir · c pour copier le lien"))
 
 	return box.Render(strings.Join(parts, "\n"))
 }
@@ -742,7 +750,8 @@ func (m *model) viewHelp() string {
 			{"g G  début fin", "premier / dernier dépôt"},
 		}},
 		{"Actions", [][2]string{
-			{"⏎  o", "ouvrir le dépôt dans le navigateur"},
+			{"⏎  o  clic", "ouvrir le dépôt dans le navigateur"},
+			{"c", "copier le lien du dépôt"},
 			{"r", "actualiser maintenant (recharge la config)"},
 		}},
 		{"Recherche GitHub", [][2]string{

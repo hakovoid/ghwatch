@@ -170,3 +170,17 @@ func TestRepoNamesAreClickable(t *testing.T) {
 		t.Fatal("-links=false devrait désactiver les liens")
 	}
 }
+
+func TestCopyLink(t *testing.T) {
+	var got string
+	orig := copyToClipboard
+	copyToClipboard = func(s string) string { got = s; return "presse-papiers" }
+	defer func() { copyToClipboard = orig }()
+
+	m := testModel(t)
+	m.results[0].Items[1].HTMLURL = "https://github.com/a/two"
+	typeText(m, "c")
+	if got != "https://github.com/a/two" || !strings.Contains(m.status, "copié") {
+		t.Fatalf("copié %q, statut %q", got, m.status)
+	}
+}
