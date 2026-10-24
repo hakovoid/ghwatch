@@ -52,7 +52,7 @@ func TestFetchAnyMergesDedupesAndSorts(t *testing.T) {
 	}))
 	defer srv.Close()
 	t.Setenv("GITHUB_API_URL", srv.URL)
-	searchPause = 0
+	searchPause, searchPauseAnon = 0, 0
 
 	cfg := &Config{StateFile: t.TempDir() + "/s.json", Watches: []Watch{{
 		Name: "IA", Any: []string{"topic:llm", "topic:claude-code", "topic:broken"}, Sort: "stars", Limit: 2,
@@ -80,5 +80,17 @@ func TestFetchAnyMergesDedupesAndSorts(t *testing.T) {
 	cfg.Watches[0].Any = []string{"topic:broken"}
 	if r := Fetch(cfg, "", time.Now())[0]; r.Err == nil {
 		t.Fatal("attendu une erreur quand toutes les requêtes échouent")
+	}
+}
+
+func TestPauseDependsOnToken(t *testing.T) {
+	searchPause, searchPauseAnon = 2*time.Second, 6500*time.Millisecond
+	defer func() { searchPause, searchPauseAnon = 0, 0 }()
+	// 10 recherches/min sans token : une toutes les 6 s minimum.
+	if p := pauseFor(""); p < 6*time.Second {
+		t.Errorf("pause sans token trop courte : %v", p)
+	}
+	if p := pauseFor("ghp_x"); p != 2*time.Second {
+		t.Errorf("pause avec token : %v", p)
 	}
 }

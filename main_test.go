@@ -68,7 +68,7 @@ func TestCheckOnlyShowsNewRepos(t *testing.T) {
 	stdout := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
-	searchPause = 0
+	searchPause, searchPauseAnon = 0, 0
 	check(cfg, "", false) // 1er passage : a/one est nouveau
 	check(cfg, "", false) // 2e passage : seul b/two est nouveau
 	w.Close()

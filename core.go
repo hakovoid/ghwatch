@@ -36,8 +36,19 @@ func (r Result) NewCount() int {
 	return n
 }
 
-// searchPause espace les appels à l'API Search pour rester sous sa limite.
-var searchPause = 2 * time.Second
+// Pauses entre deux appels à l'API Search, pour rester sous ses limites :
+// 30 recherches/min avec un token, 10/min sans.
+var (
+	searchPause     = 2 * time.Second
+	searchPauseAnon = 6500 * time.Millisecond
+)
+
+func pauseFor(token string) time.Duration {
+	if token == "" {
+		return searchPauseAnon
+	}
+	return searchPause
+}
 
 // Fetch interroge GitHub pour chaque veille, marque les nouveautés et met à
 // jour le fichier d'état. C'est le cœur partagé par la CLI et la TUI.
@@ -81,7 +92,7 @@ func searchAll(qs []string, w Watch, token string, calls *int) ([]Repo, int, err
 	failed := 0
 	for _, q := range qs {
 		if *calls > 0 {
-			time.Sleep(searchPause)
+			time.Sleep(pauseFor(token))
 		}
 		*calls++
 		repos, err := searchRepos(q, w.Sort, w.Limit, token)

@@ -41,7 +41,7 @@ func main() {
 
 	token := os.Getenv("GITHUB_TOKEN")
 	if token == "" {
-		log.Println("GITHUB_TOKEN absent : limite de l'API réduite (10 recherches/min)")
+		log.Println("GITHUB_TOKEN absent : limite de l'API réduite à 10 recherches/min, vérifications plus lentes")
 	}
 
 	check(cfg, token, *showAll)

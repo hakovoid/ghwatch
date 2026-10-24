@@ -88,6 +88,9 @@ func runTUI(cfgPath, intervalOverride, token string) error {
 	m := newModel(cfg, interval)
 	m.cfgPath, m.intervalOverride, m.token = cfgPath, intervalOverride, token
 	m.loading = true
+	if token == "" {
+		m.status = "sans GITHUB_TOKEN : 10 recherches/min, vérifications plus lentes"
+	}
 	_, err = tea.NewProgram(m, tea.WithAltScreen()).Run()
 	return err
 }
