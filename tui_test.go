@@ -13,7 +13,7 @@ func testModel(t *testing.T) *model {
 		StateFile: t.TempDir() + "/state.json",
 		Watches:   []Watch{{Name: "A", Language: "go"}, {Name: "B", Language: "rust"}},
 	}
-	m := &model{cfg: cfg, interval: time.Hour, cfgPath: "inexistant.json"}
+	m := &model{cfg: cfg, interval: time.Hour, cfgPath: "inexistant.json", filter: newFilterInput()}
 	m.resetCursors()
 	m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
 	now := time.Now()
@@ -71,5 +71,54 @@ func TestAutoRefreshWhenIntervalElapsed(t *testing.T) {
 	_, cmd := m.Update(clockMsg(m.nextRun.Add(time.Second)))
 	if !m.loading || cmd == nil {
 		t.Fatal("devrait lancer une recherche une fois l'intervalle écoulé")
+	}
+}
+
+func typeText(m *model, s string) {
+	for _, r := range s {
+		m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+}
+
+func names(items []Item) []string {
+	var out []string
+	for _, it := range items {
+		out = append(out, it.FullName)
+	}
+	return out
+}
+
+func TestSortFilterNewOnly(t *testing.T) {
+	m := testModel(t)
+	if got := names(m.visible()); got[0] != "a/two" {
+		t.Fatalf("tri par étoiles attendu, got %v", got)
+	}
+	typeText(m, "s") // → plus récents
+	typeText(m, "s") // → nom
+	if got := names(m.visible()); got[0] != "a/one" || got[2] != "a/two" {
+		t.Fatalf("tri par nom attendu, got %v", got)
+	}
+	typeText(m, "n")
+	if got := names(m.visible()); len(got) != 2 {
+		t.Fatalf("nouveautés uniquement : attendu 2, got %v", got)
+	}
+	typeText(m, "n")
+
+	typeText(m, "/")
+	typeText(m, "thr")
+	if !m.filtering {
+		t.Fatal("devrait être en saisie de filtre")
+	}
+	if got := names(m.visible()); len(got) != 1 || got[0] != "a/three" {
+		t.Fatalf("filtre « thr » : got %v", got)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	typeText(m, "q") // hors saisie, q quitte : ne doit pas s'ajouter au filtre
+	if m.filter.Value() != "thr" {
+		t.Fatalf("filtre modifié après validation : %q", m.filter.Value())
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if len(m.visible()) != 3 {
+		t.Fatal("esc devrait effacer le filtre")
 	}
 }

@@ -4,16 +4,31 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 )
 
 const itemHeight = 3 // 2 lignes + 1 ligne d'espace
+
+type sortMode int
+
+const (
+	sortStars sortMode = iota
+	sortRecent
+	sortName
+	sortModes
+)
+
+func (s sortMode) String() string {
+	return [...]string{"étoiles", "plus récents", "nom"}[s]
+}
 
 type statusMsg string
 
@@ -47,6 +62,11 @@ type model struct {
 
 	width, height int
 	status        string
+
+	filter    textinput.Model
+	filtering bool // saisie du filtre en cours
+	sort      sortMode
+	newOnly   bool
 }
 
 func runTUI(cfgPath, intervalOverride, token string) error {
@@ -63,6 +83,7 @@ func runTUI(cfgPath, intervalOverride, token string) error {
 	m := &model{
 		cfgPath: cfgPath, intervalOverride: intervalOverride, token: token,
 		cfg: cfg, interval: interval, spin: sp, loading: true,
+		filter: newFilterInput(),
 	}
 	m.resetCursors()
 	_, err = tea.NewProgram(m, tea.WithAltScreen()).Run()
@@ -81,6 +102,18 @@ func (m *model) resetCursors() {
 	if m.tab >= n {
 		m.tab = 0
 	}
+}
+
+func newFilterInput() textinput.Model {
+	ti := textinput.New()
+	ti.Prompt = "⌕ "
+	ti.Placeholder = "nom, description, langage, topic…"
+	ti.PromptStyle = sKey
+	ti.TextStyle = sDesc
+	ti.PlaceholderStyle = sMuted
+	ti.Cursor.Style = lipgloss.NewStyle().Foreground(cAccent)
+	ti.CharLimit = 60
+	return ti
 }
 
 func fetchCmd(cfg *Config, token string) tea.Cmd {
@@ -108,12 +141,50 @@ func (m *model) refresh() tea.Cmd {
 	return tea.Batch(m.spin.Tick, fetchCmd(m.cfg, m.token))
 }
 
-// visible renvoie les dépôts affichés dans l'onglet courant.
+// visible renvoie les dépôts affichés dans l'onglet courant,
+// après filtre texte, filtre « nouveautés » et tri.
 func (m *model) visible() []Item {
 	if m.tab >= len(m.results) {
 		return nil
 	}
-	return m.results[m.tab].Items
+	q := strings.ToLower(strings.TrimSpace(m.filter.Value()))
+	var out []Item
+	for _, it := range m.results[m.tab].Items {
+		if m.newOnly && !it.New {
+			continue
+		}
+		if q != "" && !matches(it, q) {
+			continue
+		}
+		out = append(out, it)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		switch m.sort {
+		case sortRecent:
+			return out[i].CreatedAt.After(out[j].CreatedAt)
+		case sortName:
+			return strings.ToLower(out[i].FullName) < strings.ToLower(out[j].FullName)
+		}
+		return out[i].Stars > out[j].Stars
+	})
+	return out
+}
+
+func matches(it Item, q string) bool {
+	hay := strings.ToLower(it.FullName + " " + it.Description + " " + it.Language + " " + strings.Join(it.Topics, " "))
+	for _, word := range strings.Fields(q) {
+		if !strings.Contains(hay, word) {
+			return false
+		}
+	}
+	return true
+}
+
+// resetView remet le curseur en haut après un changement de filtre ou de tri.
+func (m *model) resetView() {
+	for i := range m.cursor {
+		m.cursor[i], m.offset[i] = 0, 0
+	}
 }
 
 // selected renvoie le dépôt sous le curseur.
@@ -189,7 +260,30 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		m.status = ""
+		if m.filtering {
+			return m, m.updateFilter(msg)
+		}
 		switch msg.String() {
+		case "/":
+			m.filtering = true
+			return m, m.filter.Focus()
+		case "esc":
+			if m.filter.Value() != "" {
+				m.filter.SetValue("")
+				m.resetView()
+			}
+		case "s":
+			m.sort = (m.sort + 1) % sortModes
+			m.resetView()
+			m.status = "tri : " + m.sort.String()
+		case "n":
+			m.newOnly = !m.newOnly
+			m.resetView()
+			if m.newOnly {
+				m.status = "nouveautés uniquement"
+			} else {
+				m.status = "tous les dépôts"
+			}
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		case "r":
@@ -223,6 +317,34 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+// updateFilter gère la saisie du filtre : le résultat se met à jour à chaque touche.
+func (m *model) updateFilter(msg tea.KeyMsg) tea.Cmd {
+	switch msg.String() {
+	case "enter":
+		m.filtering = false
+		m.filter.Blur()
+		return nil
+	case "esc":
+		m.filtering = false
+		m.filter.Blur()
+		m.filter.SetValue("")
+		m.resetView()
+		return nil
+	case "ctrl+c":
+		return tea.Quit
+	case "up", "down":
+		m.moveCursor(map[string]int{"up": -1, "down": 1}[msg.String()])
+		return nil
+	}
+	before := m.filter.Value()
+	var cmd tea.Cmd
+	m.filter, cmd = m.filter.Update(msg)
+	if m.filter.Value() != before {
+		m.resetView()
+	}
+	return cmd
 }
 
 // ---------- Rendu ----------
@@ -288,6 +410,20 @@ func (m *model) viewTabs() string {
 		}
 	}
 	line := lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
+
+	var flags []string
+	if v := m.filter.Value(); v != "" && !m.filtering {
+		flags = append(flags, sKey.Render("⌕")+sMuted.Render(" « "+v+" »"))
+	}
+	if m.newOnly {
+		flags = append(flags, sTabBadge.Render("●")+sMuted.Render(" nouveautés"))
+	}
+	flags = append(flags, sKey.Render("⇅")+sMuted.Render(" "+m.sort.String()))
+	right := strings.Join(flags, sRule.Render("  │  ")) + " "
+
+	if gap := m.width - lipgloss.Width(line) - lipgloss.Width(right); gap >= 2 {
+		return line + strings.Repeat(" ", gap) + right
+	}
 	return ansi.Truncate(line, m.width, "…")
 }
 
@@ -304,6 +440,14 @@ func (m *model) viewList(width int) string {
 	}
 	items := m.visible()
 	if len(items) == 0 {
+		switch {
+		case m.filter.Value() != "":
+			return "\n  " + sMuted.Render("Aucun résultat pour « "+m.filter.Value()+" ».  ") +
+				sKey.Render("esc") + sMuted.Render(" pour effacer le filtre")
+		case m.newOnly:
+			return "\n  " + sMuted.Render("Rien de nouveau ici.  ") +
+				sKey.Render("n") + sMuted.Render(" pour tout afficher")
+		}
 		return "\n  " + sMuted.Render("Aucun dépôt pour cette veille.")
 	}
 
@@ -351,7 +495,7 @@ func (m *model) viewDetail(width, height int) string {
 		Padding(0, 2).Width(width - 2).Height(height - 2).MaxHeight(height)
 	it, ok := m.selected()
 	if !ok {
-		return box.Render("")
+		return "" // rien à détailler : pas de cadre vide
 	}
 	inner := width - 6
 
@@ -410,11 +554,17 @@ func (m *model) viewDetail(width, height int) string {
 }
 
 func (m *model) viewFooter() string {
+	if m.filtering {
+		m.filter.Width = max(m.width-40, 10)
+		hint := sKey.Render("⏎") + sMuted.Render(" valider  ") + sKey.Render("esc") + sMuted.Render(" annuler ")
+		return " " + m.filter.View() + strings.Repeat(" ", max(m.width-lipgloss.Width(m.filter.View())-lipgloss.Width(hint)-1, 1)) + hint
+	}
 	if m.status != "" {
 		return ansi.Truncate(" "+sKey.Render("›")+" "+sDesc.Render(m.status), m.width, "…")
 	}
 	keys := []struct{ k, v string }{
-		{"↑↓", "naviguer"}, {"←→", "veilles"}, {"⏎", "ouvrir"}, {"r", "actualiser"}, {"q", "quitter"},
+		{"↑↓", "naviguer"}, {"←→", "veilles"}, {"⏎", "ouvrir"}, {"/", "filtrer"},
+		{"s", "trier"}, {"n", "nouveautés"}, {"r", "actualiser"}, {"q", "quitter"},
 	}
 	var parts []string
 	for _, k := range keys {
