@@ -6,3 +6,6 @@ ghwatch-history.json
 
 # binaires de release
 dist/
+
+# archive d'import d'origine (sauvegarde locale)
+ghwatch.tar.gz

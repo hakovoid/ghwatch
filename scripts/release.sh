@@ -18,7 +18,7 @@ cd "$(dirname "$0")/.."
 die() { echo "erreur : $*" >&2; exit 1; }
 
 [[ "$(git branch --show-current)" == main ]] || die "pas sur la branche main"
-[[ -z "$(git status --porcelain --untracked-files=no)" ]] || die "modifications non commitées"
+[[ -z "$(git status --porcelain)" ]] || die "modifications ou fichiers non suivis : le binaire serait marqué « modifié localement »"
 git fetch -q origin main
 [[ "$(git rev-parse HEAD)" == "$(git rev-parse origin/main)" ]] || die "main n'est pas à jour avec origin/main"
 git rev-parse -q --verify "refs/tags/$TAG" >/dev/null && die "le tag $TAG existe déjà"
