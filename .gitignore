@@ -2,3 +2,4 @@ ghwatch
 ghwatch-state.json
 reports/
 *.tmp
+ghwatch-history.json

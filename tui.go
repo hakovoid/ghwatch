@@ -73,6 +73,9 @@ type model struct {
 	searchLoading bool
 	searchMode    bool // saisie de la recherche en cours
 	searchInput   textinput.Model
+	history       []string // recherches passées, la plus récente en premier
+	histIdx       int      // -1 = saisie en cours, sinon index dans history
+	histDraft     string   // saisie en cours, retrouvée en redescendant
 }
 
 func runTUI(cfgPath, intervalOverride, token string) error {
@@ -299,6 +302,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.showHelp = true
 		case "S":
 			m.searchMode = true
+			m.history, m.histIdx, m.histDraft = loadHistory(historyPath(m.cfg)), -1, ""
 			if m.search != nil {
 				m.searchInput.SetValue(m.search.Query)
 				m.searchInput.CursorEnd()
@@ -630,10 +634,19 @@ func (m *model) viewDetail(width, height int) string {
 
 func (m *model) viewFooter() string {
 	if m.searchMode {
-		m.searchInput.Width = max(m.width-45, 10)
 		hint := sKey.Render("⏎") + sMuted.Render(" chercher  ") + sKey.Render("esc") + sMuted.Render(" annuler ")
+		if len(m.history) > 0 {
+			pos := ""
+			if m.histIdx >= 0 {
+				pos = fmt.Sprintf(" %d/%d", m.histIdx+1, len(m.history))
+			}
+			hint = sKey.Render("↑↓") + sMuted.Render(" historique"+pos+"  ") + hint
+		}
+		// la saisie prend toute la place que laissent les indications
+		m.searchInput.Width = max(m.width-lipgloss.Width(hint)-lipgloss.Width(m.searchInput.Prompt)-4, 10)
 		in := m.searchInput.View()
-		return " " + in + strings.Repeat(" ", max(m.width-lipgloss.Width(in)-lipgloss.Width(hint)-1, 1)) + hint
+		line := " " + in + strings.Repeat(" ", max(m.width-lipgloss.Width(in)-lipgloss.Width(hint)-1, 1)) + hint
+		return ansi.Truncate(line, m.width, "")
 	}
 	if m.filtering {
 		m.filter.Width = max(m.width-40, 10)
@@ -683,6 +696,7 @@ func (m *model) viewHelp() string {
 		}},
 		{"Recherche GitHub", [][2]string{
 			{"S", "nouvelle recherche (syntaxe GitHub)"},
+			{"↑ ↓  (en saisie)", "parcourir l'historique des recherches"},
 			{"w", "enregistrer la recherche comme veille"},
 			{"x", "fermer l'onglet de recherche"},
 		}},

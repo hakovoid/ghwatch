@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -81,11 +82,34 @@ func (m *model) updateSearchInput(msg tea.KeyMsg) tea.Cmd {
 		return nil
 	case "ctrl+c":
 		return tea.Quit
+	case "up":
+		if m.histIdx+1 < len(m.history) {
+			if m.histIdx == -1 {
+				m.histDraft = m.searchInput.Value()
+			}
+			m.histIdx++
+			m.searchInput.SetValue(m.history[m.histIdx])
+			m.searchInput.CursorEnd()
+		}
+		return nil
+	case "down":
+		if m.histIdx >= 0 {
+			m.histIdx--
+			if m.histIdx == -1 {
+				m.searchInput.SetValue(m.histDraft)
+			} else {
+				m.searchInput.SetValue(m.history[m.histIdx])
+			}
+			m.searchInput.CursorEnd()
+		}
+		return nil
 	case "enter":
-		q := m.searchInput.Value()
+		q := strings.TrimSpace(m.searchInput.Value())
 		if q == "" {
 			return nil
 		}
+		m.history = pushHistory(m.history, q)
+		_ = saveHistory(historyPath(m.cfg), m.history)
 		m.searchMode = false
 		m.searchInput.Blur()
 		m.search = &Result{Watch: Watch{Name: q}, Query: q}

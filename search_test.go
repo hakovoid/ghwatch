@@ -143,3 +143,42 @@ func TestSaveSearchAsWatch(t *testing.T) {
 		t.Errorf("statut attendu « déjà une veille », got %q", m.status)
 	}
 }
+
+func TestSearchHistory(t *testing.T) {
+	var q string
+	fakeGitHub(t, &q)
+	m := testModel(t)
+	submitSearch(t, m, "première")
+	submitSearch(t, m, "deuxième")
+	submitSearch(t, m, "première") // remonte en tête, sans doublon
+
+	if h := loadHistory(historyPath(m.cfg)); len(h) != 2 || h[0] != "première" {
+		t.Fatalf("historique enregistré : %v", h)
+	}
+
+	typeText(m, "S")
+	m.searchInput.SetValue("brouillon")
+	up := tea.KeyMsg{Type: tea.KeyUp}
+	down := tea.KeyMsg{Type: tea.KeyDown}
+	m.Update(up)
+	m.Update(up)
+	m.Update(up) // déjà au plus ancien
+	if v := m.searchInput.Value(); v != "deuxième" {
+		t.Fatalf("après ↑↑↑ : %q", v)
+	}
+	m.Update(down)
+	m.Update(down)
+	if v := m.searchInput.Value(); v != "brouillon" {
+		t.Fatalf("en redescendant, la saisie en cours doit revenir : %q", v)
+	}
+}
+
+func TestPushHistoryLimit(t *testing.T) {
+	var h []string
+	for i := 0; i < historyMax+5; i++ {
+		h = pushHistory(h, string(rune('a'+i%26))+strings.Repeat("x", i))
+	}
+	if len(h) != historyMax {
+		t.Fatalf("taille = %d, attendu %d", len(h), historyMax)
+	}
+}

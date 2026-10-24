@@ -142,8 +142,9 @@ func TestViewFitsTerminal(t *testing.T) {
 	for _, size := range [][2]int{{60, 16}, {80, 24}, {120, 30}, {200, 50}} {
 		m := testModel(t)
 		m.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
-		for _, keys := range []string{"", "?"} {
+		for _, keys := range []string{"", "?", "zS"} { // z ferme l'aide, S ouvre la recherche
 			typeText(m, keys)
+			m.history = []string{"ancienne recherche"}
 			v := m.View()
 			if h := lipgloss.Height(v); h > size[1] {
 				t.Errorf("%dx%d (touches %q) : hauteur %d", size[0], size[1], keys, h)
