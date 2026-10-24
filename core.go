@@ -18,10 +18,11 @@ type Item struct {
 
 // Result regroupe les dépôts trouvés pour une veille.
 type Result struct {
-	Watch Watch
-	Query string
-	Items []Item
-	Err   error
+	Watch  Watch
+	Query  string
+	Items  []Item
+	Err    error // toutes les requêtes ont échoué
+	Failed int   // nombre de requêtes en échec (veilles « any »)
 }
 
 // NewCount renvoie le nombre de dépôts nouveaux dans ce résultat.
@@ -43,18 +44,16 @@ var searchPause = 2 * time.Second
 func Fetch(cfg *Config, token string, now time.Time) []Result {
 	state := loadState(cfg.StateFile)
 	results := make([]Result, 0, len(cfg.Watches))
+	calls := 0
 
-	for i, w := range cfg.Watches {
-		if i > 0 {
-			time.Sleep(searchPause)
-		}
-		q, err := buildQuery(w, now)
+	for _, w := range cfg.Watches {
+		qs, err := buildQueries(w, now)
 		if err != nil {
 			results = append(results, Result{Watch: w, Err: err})
 			continue
 		}
-		repos, err := searchRepos(q, w.Sort, w.Limit, token)
-		r := Result{Watch: w, Query: q, Err: err}
+		repos, failed, err := searchAll(qs, w, token, &calls)
+		r := Result{Watch: w, Query: strings.Join(qs, "  |  "), Err: err, Failed: failed}
 		for _, repo := range repos {
 			_, seen := state.Seen[repo.FullName]
 			if !seen {
@@ -69,6 +68,51 @@ func Fetch(cfg *Config, token string, now time.Time) []Result {
 		log.Printf("impossible d'enregistrer l'état: %v", err)
 	}
 	return results
+}
+
+// searchAll lance chaque requête, fusionne les résultats sans doublon, les
+// trie selon la veille et garde les « limit » premiers. Si une partie des
+// requêtes échoue, les autres sont conservées (failed compte les échecs) ;
+// err n'est renvoyée que si toutes ont échoué.
+func searchAll(qs []string, w Watch, token string, calls *int) ([]Repo, int, error) {
+	byName := map[string]Repo{}
+	var merged []Repo
+	var lastErr error
+	failed := 0
+	for _, q := range qs {
+		if *calls > 0 {
+			time.Sleep(searchPause)
+		}
+		*calls++
+		repos, err := searchRepos(q, w.Sort, w.Limit, token)
+		if err != nil {
+			failed++
+			lastErr = err
+			continue
+		}
+		for _, r := range repos {
+			if _, dup := byName[r.FullName]; !dup {
+				byName[r.FullName] = r
+				merged = append(merged, r)
+			}
+		}
+	}
+	if failed == len(qs) {
+		return nil, failed, lastErr
+	}
+	if len(qs) > 1 {
+		sort.SliceStable(merged, func(i, j int) bool {
+			switch w.Sort {
+			case "forks":
+				return merged[i].Forks > merged[j].Forks
+			case "updated":
+				return merged[i].PushedAt.After(merged[j].PushedAt)
+			}
+			return merged[i].Stars > merged[j].Stars
+		})
+		merged = merged[:min(len(merged), w.Limit)]
+	}
+	return merged, failed, nil
 }
 
 // check est le mode texte : affiche le rapport et l'enregistre en Markdown.
@@ -113,6 +157,9 @@ func renderMarkdown(results []Result, now time.Time, showAll bool) string {
 		if r.Err != nil {
 			fmt.Fprintf(&b, "⚠️ Erreur : %v\n", r.Err)
 			continue
+		}
+		if r.Failed > 0 {
+			fmt.Fprintf(&b, "⚠️ %d requête(s) en échec, résultats partiels.\n\n", r.Failed)
 		}
 		var items []Item
 		for _, it := range r.Items {

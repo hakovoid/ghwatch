@@ -488,6 +488,9 @@ func (m *model) viewTabs() string {
 	line := lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
 
 	var flags []string
+	if tabs := m.tabs(); m.tab < len(tabs) && tabs[m.tab].Failed > 0 {
+		flags = append(flags, sErr.Render(fmt.Sprintf("⚠ %d requête(s) en échec", tabs[m.tab].Failed)))
+	}
 	if v := m.filter.Value(); v != "" && !m.filtering {
 		flags = append(flags, sKey.Render("⌕")+sMuted.Render(" « "+v+" »"))
 	}

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -20,6 +21,7 @@ type Config struct {
 type Watch struct {
 	Name          string   `json:"name"`
 	Query         string   `json:"query,omitempty"`          // requête GitHub brute (optionnelle)
+	Any           []string `json:"any,omitempty"`            // termes combinés en OU : une recherche par terme, résultats fusionnés
 	Topics        []string `json:"topics,omitempty"`         // ex: [llm, agents]
 	Language      string   `json:"language,omitempty"`       // ex: go
 	MinStars      int      `json:"min_stars,omitempty"`      // ex: 50
@@ -102,7 +104,36 @@ func parseDuration(s string) (time.Duration, error) {
 	return time.ParseDuration(s)
 }
 
-// buildQuery transforme une veille en requête de recherche GitHub.
+// buildQueries renvoie les requêtes GitHub d'une veille : une seule en
+// général, ou une par terme de « any » (chacune avec les critères communs).
+func buildQueries(w Watch, now time.Time) ([]string, error) {
+	var terms []string
+	for _, t := range w.Any {
+		if t = strings.TrimSpace(t); t != "" {
+			terms = append(terms, t)
+		}
+	}
+	if len(terms) == 0 {
+		q, err := buildQuery(w, now)
+		if err != nil {
+			return nil, err
+		}
+		return []string{q}, nil
+	}
+	base, err := buildQuery(w, now)
+	if err != nil && !errors.Is(err, errNoCriteria) {
+		return nil, err
+	}
+	qs := make([]string, 0, len(terms))
+	for _, t := range terms {
+		qs = append(qs, strings.TrimSpace(t+" "+base))
+	}
+	return qs, nil
+}
+
+var errNoCriteria = errors.New("aucun critère")
+
+// buildQuery transforme les critères communs d'une veille en requête GitHub.
 func buildQuery(w Watch, now time.Time) (string, error) {
 	var parts []string
 	if w.Query != "" {
@@ -132,7 +163,7 @@ func buildQuery(w Watch, now time.Time) (string, error) {
 		parts = append(parts, "pushed:>="+now.Add(-d).Format("2006-01-02"))
 	}
 	if len(parts) == 0 {
-		return "", fmt.Errorf("veille %q : aucun critère", w.Name)
+		return "", fmt.Errorf("veille %q : %w", w.Name, errNoCriteria)
 	}
 	return strings.Join(parts, " "), nil
 }
