@@ -13,7 +13,8 @@ import (
 // Item est un dépôt trouvé, avec son statut de nouveauté.
 type Item struct {
 	Repo
-	New bool // jamais vu avant ce passage
+	New   bool  // jamais vu avant ce passage
+	Trend Trend // progression des étoiles sur la fenêtre configurée
 }
 
 // Result regroupe les dépôts trouvés pour une veille.
@@ -55,6 +56,7 @@ func pauseFor(token string) time.Duration {
 func Fetch(cfg *Config, token string, now time.Time) []Result {
 	state := loadState(cfg.StateFile)
 	results := make([]Result, 0, len(cfg.Watches))
+	window := cfg.trendWindow()
 	calls := 0
 
 	for _, w := range cfg.Watches {
@@ -70,7 +72,9 @@ func Fetch(cfg *Config, token string, now time.Time) []Result {
 			if !seen {
 				state.Seen[repo.FullName] = now
 			}
-			r.Items = append(r.Items, Item{Repo: repo, New: !seen})
+			it := Item{Repo: repo, New: !seen, Trend: state.trend(repo.FullName, repo.Stars, now, window)}
+			state.recordStars(repo.FullName, repo.Stars, now)
+			r.Items = append(r.Items, it)
 		}
 		results = append(results, r)
 	}

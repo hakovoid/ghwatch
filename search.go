@@ -42,7 +42,8 @@ func searchCmd(cfg *Config, query, token string) tea.Cmd {
 		r := Result{Watch: Watch{Name: query, Query: query, Limit: 10}, Query: query, Err: err}
 		for _, repo := range repos {
 			_, seen := state.Seen[repo.FullName]
-			r.Items = append(r.Items, Item{Repo: repo, New: !seen})
+			r.Items = append(r.Items, Item{Repo: repo, New: !seen,
+				Trend: state.trend(repo.FullName, repo.Stars, now, cfg.trendWindow())})
 		}
 		return searchDoneMsg{result: r, at: now}
 	}

@@ -12,10 +12,11 @@ import (
 )
 
 type Config struct {
-	Interval   string  `json:"interval"`              // ex: "6h", "1d", "1w", "30m"
-	StateFile  string  `json:"state_file"`            // dépôts déjà vus
-	ReportsDir string  `json:"reports_dir,omitempty"` // rapports Markdown ("" = désactivé)
-	Watches    []Watch `json:"watches"`
+	Interval    string  `json:"interval"`               // ex: "6h", "1d", "1w", "30m"
+	StateFile   string  `json:"state_file"`             // dépôts déjà vus
+	ReportsDir  string  `json:"reports_dir,omitempty"`  // rapports Markdown ("" = désactivé)
+	TrendWindow string  `json:"trend_window,omitempty"` // période de progression des étoiles (défaut 7d)
+	Watches     []Watch `json:"watches"`
 }
 
 type Watch struct {
@@ -49,6 +50,11 @@ func loadConfig(path string) (*Config, error) {
 	if len(c.Watches) == 0 {
 		return nil, fmt.Errorf("aucune veille définie dans 'watches'")
 	}
+	if c.TrendWindow != "" {
+		if d, err := parseDuration(c.TrendWindow); err != nil || d < time.Hour {
+			return nil, fmt.Errorf("trend_window invalide %q (minimum 1h)", c.TrendWindow)
+		}
+	}
 	for i := range c.Watches {
 		w := &c.Watches[i]
 		if w.Limit <= 0 {
@@ -65,6 +71,14 @@ func loadConfig(path string) (*Config, error) {
 		}
 	}
 	return &c, nil
+}
+
+// trendWindow renvoie la période de mesure de la progression (7 jours par défaut).
+func (c *Config) trendWindow() time.Duration {
+	if d, err := parseDuration(c.TrendWindow); err == nil && d >= time.Hour {
+		return d
+	}
+	return 7 * 24 * time.Hour
 }
 
 // loadConfigWithInterval charge la config, applique un éventuel intervalle
