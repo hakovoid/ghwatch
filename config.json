@@ -1,0 +1,28 @@
+{
+  "interval": "1d",
+  "state_file": "ghwatch-state.json",
+  "reports_dir": "reports",
+  "watches": [
+    {
+      "name": "Nouveaux projets IA de la semaine",
+      "topics": ["llm"],
+      "created_within": "7d",
+      "min_stars": 50,
+      "limit": 10
+    },
+    {
+      "name": "Projets Go qui montent",
+      "language": "go",
+      "created_within": "30d",
+      "min_stars": 100,
+      "limit": 10
+    },
+    {
+      "name": "Outils CLI récents",
+      "query": "cli in:description",
+      "created_within": "14d",
+      "min_stars": 30,
+      "limit": 5
+    }
+  ]
+}
