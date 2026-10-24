@@ -7,6 +7,7 @@
 //	ghwatch -config autre.json   # autre fichier de config
 //	ghwatch -interval 6h         # remplace l'interval de la config
 //	ghwatch -all                 # affiche aussi les dépôts déjà vus
+//	ghwatch -tui                 # interface interactive dans le terminal
 package main
 
 import (
@@ -23,7 +24,15 @@ func main() {
 	intervalFlag := flag.String("interval", "", "fréquence (ex: 30m, 6h, 1d, 1w) — remplace celle de la config")
 	once := flag.Bool("once", false, "une seule vérification puis quitter")
 	showAll := flag.Bool("all", false, "afficher aussi les dépôts déjà vus")
+	tui := flag.Bool("tui", false, "interface interactive dans le terminal")
 	flag.Parse()
+
+	if *tui {
+		if err := runTUI(*cfgPath, *intervalFlag, os.Getenv("GITHUB_TOKEN")); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 
 	cfg, interval, err := loadConfigWithInterval(*cfgPath, *intervalFlag)
 	if err != nil {
