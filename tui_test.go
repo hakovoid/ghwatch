@@ -15,8 +15,8 @@ func testModel(t *testing.T) *model {
 		StateFile: t.TempDir() + "/state.json",
 		Watches:   []Watch{{Name: "A", Language: "go"}, {Name: "B", Language: "rust"}},
 	}
-	m := &model{cfg: cfg, interval: time.Hour, cfgPath: "inexistant.json", filter: newFilterInput()}
-	m.resetCursors()
+	m := newModel(cfg, time.Hour)
+	m.cfgPath = "inexistant.json"
 	m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
 	now := time.Now()
 	m.Update(fetchedMsg{at: now, results: []Result{

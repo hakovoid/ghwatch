@@ -1,0 +1,100 @@
+package main
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
+)
+
+// fakeGitHub renvoie toujours les mêmes dépôts et mémorise la dernière requête.
+func fakeGitHub(t *testing.T, lastQuery *string) {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		*lastQuery = r.URL.Query().Get("q")
+		json.NewEncoder(w).Encode(searchResp{Items: []Repo{
+			{FullName: "x/found", Stars: 42}, {FullName: "a/one", Stars: 7},
+		}})
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("GITHUB_API_URL", srv.URL)
+}
+
+// runCmd exécute une commande Bubble Tea et renvoie les messages produits
+// (en déroulant les tea.Batch, sans les ticks d'animation).
+func runCmd(cmd tea.Cmd) []tea.Msg {
+	if cmd == nil {
+		return nil
+	}
+	msg := cmd()
+	if batch, ok := msg.(tea.BatchMsg); ok {
+		var out []tea.Msg
+		for _, c := range batch {
+			if c == nil {
+				continue
+			}
+			// on ignore les commandes d'animation (spinner) qui bloqueraient
+			if res := runCmdTimeout(c); res != nil {
+				out = append(out, res...)
+			}
+		}
+		return out
+	}
+	return []tea.Msg{msg}
+}
+
+func runCmdTimeout(c tea.Cmd) []tea.Msg {
+	ch := make(chan []tea.Msg, 1)
+	go func() { ch <- runCmd(c) }()
+	select {
+	case r := <-ch:
+		return r
+	case <-timeAfter():
+		return nil
+	}
+}
+
+func submitSearch(t *testing.T, m *model, q string) {
+	t.Helper()
+	typeText(m, "S")
+	if !m.searchMode {
+		t.Fatal("« S » devrait ouvrir la saisie de recherche")
+	}
+	m.searchInput.SetValue(q)
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	for _, msg := range runCmd(cmd) {
+		if _, ok := msg.(searchDoneMsg); ok {
+			m.Update(msg)
+		}
+	}
+}
+
+func TestSearchOpensTemporaryTab(t *testing.T) {
+	var q string
+	fakeGitHub(t, &q)
+	m := testModel(t)
+	submitSearch(t, m, "rag language:python")
+
+	if q != "rag language:python" {
+		t.Fatalf("requête envoyée : %q", q)
+	}
+	if !m.onSearchTab() || m.searchLoading {
+		t.Fatal("l'onglet de recherche devrait être actif et chargé")
+	}
+	if got := names(m.visible()); len(got) != 2 || got[0] != "x/found" {
+		t.Fatalf("résultats : %v", got)
+	}
+	if len(m.results) != 2 {
+		t.Fatal("la recherche ne doit pas modifier les veilles")
+	}
+
+	typeText(m, "x")
+	if m.search != nil || m.tab >= len(m.cursor) {
+		t.Fatal("« x » devrait fermer l'onglet de recherche")
+	}
+}
+
+func timeAfter() <-chan time.Time { return time.After(2 * time.Second) }

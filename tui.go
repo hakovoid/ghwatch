@@ -68,6 +68,11 @@ type model struct {
 	sort      sortMode
 	newOnly   bool
 	showHelp  bool
+
+	search        *Result // onglet de recherche ponctuelle (nil = fermé)
+	searchLoading bool
+	searchMode    bool // saisie de la recherche en cours
+	searchInput   textinput.Model
 }
 
 func runTUI(cfgPath, intervalOverride, token string) error {
@@ -77,24 +82,29 @@ func runTUI(cfgPath, intervalOverride, token string) error {
 	}
 	log.SetOutput(io.Discard) // les logs casseraient l'affichage
 
-	sp := spinner.New()
-	sp.Spinner = spinner.MiniDot
-	sp.Style = lipgloss.NewStyle().Foreground(cAccent)
-
-	m := &model{
-		cfgPath: cfgPath, intervalOverride: intervalOverride, token: token,
-		cfg: cfg, interval: interval, spin: sp, loading: true,
-		filter: newFilterInput(),
-	}
-	m.resetCursors()
+	m := newModel(cfg, interval)
+	m.cfgPath, m.intervalOverride, m.token = cfgPath, intervalOverride, token
+	m.loading = true
 	_, err = tea.NewProgram(m, tea.WithAltScreen()).Run()
 	return err
 }
 
+func newModel(cfg *Config, interval time.Duration) *model {
+	sp := spinner.New()
+	sp.Spinner = spinner.MiniDot
+	sp.Style = lipgloss.NewStyle().Foreground(cAccent)
+	m := &model{
+		cfg: cfg, interval: interval, spin: sp,
+		filter: newFilterInput(), searchInput: newSearchInput(),
+	}
+	m.resetCursors()
+	return m
+}
+
 func (m *model) resetCursors() {
-	n := len(m.cfg.Watches)
-	if m.results != nil {
-		n = len(m.results)
+	n := m.watchTabs()
+	if m.search != nil {
+		n++
 	}
 	if len(m.cursor) != n {
 		m.cursor = make([]int, n)
@@ -145,12 +155,13 @@ func (m *model) refresh() tea.Cmd {
 // visible renvoie les dépôts affichés dans l'onglet courant,
 // après filtre texte, filtre « nouveautés » et tri.
 func (m *model) visible() []Item {
-	if m.tab >= len(m.results) {
+	tabs := m.tabs()
+	if m.tab >= len(tabs) {
 		return nil
 	}
 	q := strings.ToLower(strings.TrimSpace(m.filter.Value()))
 	var out []Item
-	for _, it := range m.results[m.tab].Items {
+	for _, it := range tabs[m.tab].Items {
 		if m.newOnly && !it.New {
 			continue
 		}
@@ -240,8 +251,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, clock()
 
 	case spinner.TickMsg:
-		if !m.loading {
-			return m, nil // arrête l'animation entre deux recherches
+		if !m.loading && !m.searchLoading {
+			return m, nil
 		}
 		var cmd tea.Cmd
 		m.spin, cmd = m.spin.Update(msg)
@@ -256,6 +267,15 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = "rapport non enregistré : " + err.Error()
 		}
 
+	case searchDoneMsg:
+		if m.search != nil && m.search.Query == msg.result.Query {
+			r := msg.result
+			m.search, m.searchLoading = &r, false
+			if r.Err == nil {
+				m.status = fmt.Sprintf("%d dépôt(s) trouvé(s) · x pour fermer", len(r.Items))
+			}
+		}
+
 	case statusMsg:
 		m.status = string(msg)
 
@@ -263,6 +283,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = ""
 		if m.filtering {
 			return m, m.updateFilter(msg)
+		}
+		if m.searchMode {
+			return m, m.updateSearchInput(msg)
 		}
 		if m.showHelp { // n'importe quelle touche ferme l'aide
 			m.showHelp = false
@@ -274,6 +297,17 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "?":
 			m.showHelp = true
+		case "S":
+			m.searchMode = true
+			if m.search != nil {
+				m.searchInput.SetValue(m.search.Query)
+				m.searchInput.CursorEnd()
+			}
+			return m, m.searchInput.Focus()
+		case "x":
+			if m.onSearchTab() {
+				m.closeSearch()
+			}
 		case "/":
 			m.filtering = true
 			return m, m.filter.Focus()
@@ -387,6 +421,8 @@ func (m *model) viewHeader() string {
 	var right string
 	switch {
 	case m.loading:
+		right = m.spin.View() + " vérification des veilles…"
+	case m.searchLoading:
 		right = m.spin.View() + " recherche en cours…"
 	case !m.lastRun.IsZero():
 		now := m.now
@@ -415,7 +451,7 @@ func (m *model) viewHeader() string {
 
 func (m *model) viewTabs() string {
 	var tabs []string
-	for i, w := range m.cfg.Watches {
+	for i, w := range m.cfg.Watches[:min(len(m.cfg.Watches), m.watchTabs())] {
 		label := w.Name
 		if i < len(m.results) {
 			label = m.results[i].Watch.Name
@@ -431,6 +467,14 @@ func (m *model) viewTabs() string {
 			tabs = append(tabs, sTabActive.Render(label))
 		} else {
 			tabs = append(tabs, sTabInactive.Render(label))
+		}
+	}
+	if m.search != nil {
+		label := "⌕ " + ansi.Truncate(m.search.Query, 24, "…")
+		if m.onSearchTab() {
+			tabs = append(tabs, sTabActive.Background(cAccent2).Render(label))
+		} else {
+			tabs = append(tabs, sTabInactive.Foreground(cAccent2).Render(label))
 		}
 	}
 	line := lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
@@ -452,11 +496,14 @@ func (m *model) viewTabs() string {
 }
 
 func (m *model) viewList(width int) string {
-	if m.loading && m.results == nil {
+	if m.onSearchTab() && m.searchLoading {
+		return "\n  " + m.spin.View() + sMuted.Render(" Recherche « "+m.search.Query+" » sur GitHub…")
+	}
+	if m.loading && m.results == nil && !m.onSearchTab() {
 		return "\n  " + m.spin.View() + sMuted.Render(" Interrogation de GitHub…")
 	}
-	if m.tab < len(m.results) {
-		if err := m.results[m.tab].Err; err != nil {
+	if tabs := m.tabs(); m.tab < len(tabs) {
+		if err := tabs[m.tab].Err; err != nil {
 			msg := ansi.Wordwrap(err.Error(), width-6, " ")
 			return "\n  " + sErr.Render("⚠  Erreur") + "\n\n" +
 				lipgloss.NewStyle().PaddingLeft(2).Foreground(cMuted).Render(msg)
@@ -578,6 +625,12 @@ func (m *model) viewDetail(width, height int) string {
 }
 
 func (m *model) viewFooter() string {
+	if m.searchMode {
+		m.searchInput.Width = max(m.width-45, 10)
+		hint := sKey.Render("⏎") + sMuted.Render(" chercher  ") + sKey.Render("esc") + sMuted.Render(" annuler ")
+		in := m.searchInput.View()
+		return " " + in + strings.Repeat(" ", max(m.width-lipgloss.Width(in)-lipgloss.Width(hint)-1, 1)) + hint
+	}
 	if m.filtering {
 		m.filter.Width = max(m.width-40, 10)
 		hint := sKey.Render("⏎") + sMuted.Render(" valider  ") + sKey.Render("esc") + sMuted.Render(" annuler ")
@@ -588,11 +641,11 @@ func (m *model) viewFooter() string {
 	}
 	keys := []struct{ k, v string }{
 		{"↑↓", "naviguer"}, {"←→", "veilles"}, {"⏎", "ouvrir"}, {"/", "filtrer"},
-		{"s", "trier"}, {"n", "nouveautés"}, {"r", "actualiser"}, {"?", "aide"}, {"q", "quitter"},
+		{"S", "chercher"}, {"s", "trier"}, {"n", "nouveautés"}, {"r", "actualiser"}, {"?", "aide"}, {"q", "quitter"},
 	}
-	if m.width < 125 { // terminal étroit : l'essentiel, le reste est dans l'aide
+	if m.width < 140 { // terminal étroit : l'essentiel, le reste est dans l'aide
 		keys = []struct{ k, v string }{
-			{"↑↓", "naviguer"}, {"⏎", "ouvrir"}, {"/", "filtrer"}, {"?", "aide"}, {"q", "quitter"},
+			{"↑↓", "naviguer"}, {"⏎", "ouvrir"}, {"S", "chercher"}, {"?", "aide"}, {"q", "quitter"},
 		}
 	}
 	var parts []string
@@ -623,6 +676,10 @@ func (m *model) viewHelp() string {
 		{"Actions", [][2]string{
 			{"⏎  o", "ouvrir le dépôt dans le navigateur"},
 			{"r", "actualiser maintenant (recharge la config)"},
+		}},
+		{"Recherche GitHub", [][2]string{
+			{"S", "nouvelle recherche (syntaxe GitHub)"},
+			{"x", "fermer l'onglet de recherche"},
 		}},
 		{"Affichage", [][2]string{
 			{"/", "filtrer (nom, description, langage, topic)"},
