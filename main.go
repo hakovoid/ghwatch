@@ -25,6 +25,7 @@ func main() {
 	once := flag.Bool("once", false, "une seule vérification puis quitter")
 	showAll := flag.Bool("all", false, "afficher aussi les dépôts déjà vus")
 	tui := flag.Bool("tui", false, "interface interactive dans le terminal")
+	flag.BoolVar(&linksEnabled, "links", true, "liens cliquables dans la TUI (désactiver si le terminal affiche des caractères parasites)")
 	flag.Parse()
 
 	if *tui {

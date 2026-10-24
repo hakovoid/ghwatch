@@ -577,7 +577,7 @@ func (m *model) viewItem(it Item, selected bool, width int) string {
 	}
 
 	owner, name, _ := strings.Cut(it.FullName, "/")
-	title := sOwner.Render(owner+"/") + repoStyle.Render(name)
+	title := hyperlink(it.HTMLURL, sOwner.Render(owner+"/")+repoStyle.Render(name))
 	if it.New {
 		title += " " + sNewBadge.Render("NEW")
 	}
@@ -608,7 +608,7 @@ func (m *model) viewDetail(width, height int) string {
 	inner := width - 6
 
 	owner, name, _ := strings.Cut(it.FullName, "/")
-	title := sOwner.Render(owner+"/") + sRepoSel.Render(name)
+	title := hyperlink(it.HTMLURL, sOwner.Render(owner+"/")+sRepoSel.Render(name))
 	if it.New {
 		title += " " + sNewBadge.Render("NEW")
 	}
@@ -655,8 +655,9 @@ func (m *model) viewDetail(width, height int) string {
 		parts = append(parts, "", strings.Join(lines, "\n"))
 	}
 
-	link := lipgloss.NewStyle().Foreground(cAccent2).Underline(true).Render(ansi.Truncate(it.HTMLURL, inner, "…"))
-	parts = append(parts, "", link, sMuted.Render("⏎ ouvrir dans le navigateur"))
+	link := hyperlink(it.HTMLURL, lipgloss.NewStyle().Foreground(cAccent2).Underline(true).
+		Render(ansi.Truncate(it.HTMLURL, inner, "…")))
+	parts = append(parts, "", link, sMuted.Render("clic ou ⏎ pour ouvrir"))
 
 	return box.Render(strings.Join(parts, "\n"))
 }

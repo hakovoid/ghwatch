@@ -156,3 +156,17 @@ func TestViewFitsTerminal(t *testing.T) {
 		}
 	}
 }
+
+func TestRepoNamesAreClickable(t *testing.T) {
+	m := testModel(t)
+	m.results[0].Items[1].HTMLURL = "https://github.com/a/two" // en tête (tri par étoiles)
+	v := m.View()
+	if !strings.Contains(v, "\x1b]8;;https://github.com/a/two") {
+		t.Fatal("le nom du dépôt devrait être un lien OSC 8")
+	}
+	linksEnabled = false
+	defer func() { linksEnabled = true }()
+	if strings.Contains(m.View(), "\x1b]8;;") {
+		t.Fatal("-links=false devrait désactiver les liens")
+	}
+}
