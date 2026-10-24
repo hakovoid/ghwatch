@@ -13,17 +13,19 @@ import (
 // Item est un dépôt trouvé, avec son statut de nouveauté.
 type Item struct {
 	Repo
-	New   bool  // jamais vu avant ce passage
-	Trend Trend // progression des étoiles sur la fenêtre configurée
+	New   bool      // découvert lors de la dernière vérification
+	Seen  time.Time // première fois vu
+	Trend Trend     // progression des étoiles sur la fenêtre configurée
 }
 
 // Result regroupe les dépôts trouvés pour une veille.
 type Result struct {
-	Watch  Watch
-	Query  string
-	Items  []Item
-	Err    error // toutes les requêtes ont échoué
-	Failed int   // nombre de requêtes en échec (veilles « any »)
+	Watch     Watch
+	Query     string
+	Items     []Item
+	Err       error     // toutes les requêtes du dernier passage ont échoué
+	Failed    int       // nombre de requêtes en échec (veilles « any »)
+	CheckedAt time.Time // dernière vérification (zéro = jamais)
 }
 
 // NewCount renvoie le nombre de dépôts nouveaux dans ce résultat.
@@ -51,39 +53,51 @@ func pauseFor(token string) time.Duration {
 	return searchPause
 }
 
-// Fetch interroge GitHub pour chaque veille, marque les nouveautés et met à
-// jour le fichier d'état. C'est le cœur partagé par la CLI et la TUI.
+// Fetch vérifie toutes les veilles et enregistre l'état : c'est le mode
+// texte, lancé explicitement (ou par cron), qui ne tient pas compte du cache.
 func Fetch(cfg *Config, token string, now time.Time) []Result {
-	state := loadState(cfg.StateFile)
-	results := make([]Result, 0, len(cfg.Watches))
-	window := cfg.trendWindow()
-	calls := 0
-
-	for _, w := range cfg.Watches {
-		qs, err := buildQueries(w, now)
-		if err != nil {
-			results = append(results, Result{Watch: w, Err: err})
-			continue
-		}
-		repos, failed, err := searchAll(qs, w, token, &calls)
-		r := Result{Watch: w, Query: strings.Join(qs, "  |  "), Err: err, Failed: failed}
-		for _, repo := range repos {
-			_, seen := state.Seen[repo.FullName]
-			if !seen {
-				state.Seen[repo.FullName] = now
-			}
-			it := Item{Repo: repo, New: !seen, Trend: state.trend(repo.FullName, repo.Stars, now, window)}
-			state.recordStars(repo.FullName, repo.Stars, now)
-			r.Items = append(r.Items, it)
-		}
-		results = append(results, r)
-	}
-
-	if err := state.save(cfg.StateFile); err != nil {
+	st := loadState(cfg.StateFile)
+	results, _ := st.check(cfg, token, now, nil)
+	if err := st.save(cfg.StateFile); err != nil {
 		log.Printf("impossible d'enregistrer l'état: %v", err)
 	}
 	return results
 }
+
+// check interroge GitHub pour les veilles à vérifier (toutes si due est nil),
+// les enregistre, puis renvoie tous les onglets à partir de la mémoire locale.
+// fetched indique si au moins une veille a été vérifiée.
+func (s *State) check(cfg *Config, token string, now time.Time, due func(Watch) bool) (results []Result, fetched bool) {
+	errs := map[string]Result{}
+	calls := 0
+	for _, w := range cfg.Watches {
+		if due != nil && !due(w) {
+			continue
+		}
+		fetched = true
+		qs, err := buildQueries(w, now)
+		if err != nil {
+			errs[w.Name] = Result{Err: err}
+			continue
+		}
+		// la recherche se fait sans verrou : la TUI reste utilisable
+		repos, failed, err := searchAll(qs, w, token, &calls)
+		errs[w.Name] = Result{Err: err, Failed: failed}
+		if err == nil {
+			s.mu.Lock()
+			s.ingest(w, repos, now)
+			s.mu.Unlock()
+		}
+	}
+	if fetched {
+		s.mu.Lock()
+		s.prune(cfg.keep(), now)
+		s.mu.Unlock()
+	}
+	return s.results(cfg, errs, now), fetched
+}
+
+func joinQueries(qs []string) string { return strings.Join(qs, "  |  ") }
 
 // searchAll lance chaque requête, fusionne les résultats sans doublon, les
 // trie selon la veille et garde les « limit » premiers. Si une partie des

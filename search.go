@@ -34,17 +34,12 @@ func newSearchInput() textinput.Model {
 // searchCmd lance la recherche. Les dépôts jamais vus par tes veilles sont
 // marqués NEW, mais l'état n'est pas modifié : une recherche ponctuelle ne
 // doit pas « consommer » les nouveautés de tes veilles.
-func searchCmd(cfg *Config, query, token string) tea.Cmd {
+func searchCmd(cfg *Config, st *State, query, token string) tea.Cmd {
 	return func() tea.Msg {
 		now := time.Now()
-		state := loadState(cfg.StateFile)
 		repos, err := searchRepos(query, "stars", searchLimit, token)
-		r := Result{Watch: Watch{Name: query, Query: query, Limit: 10}, Query: query, Err: err}
-		for _, repo := range repos {
-			_, seen := state.Seen[repo.FullName]
-			r.Items = append(r.Items, Item{Repo: repo, New: !seen,
-				Trend: state.trend(repo.FullName, repo.Stars, now, cfg.trendWindow())})
-		}
+		r := Result{Watch: Watch{Name: query, Query: query, Limit: 10}, Query: query, Err: err, CheckedAt: now,
+			Items: st.searchItems(repos, now, cfg.trendWindow())}
 		return searchDoneMsg{result: r, at: now}
 	}
 }
@@ -57,22 +52,32 @@ func (m *model) watchTabs() int {
 	return len(m.cfg.Watches)
 }
 
-// tabs renvoie les résultats de tous les onglets, recherche comprise (en dernier).
+// Onglets : les veilles, puis ♥ Favoris et ◷ À voir, puis la recherche ponctuelle.
+const markTabs = 2
+
+func (m *model) markTab(k mark) int { return m.watchTabs() + int(k) }
+func (m *model) searchTab() int     { return m.watchTabs() + markTabs }
+
+// tabs renvoie les résultats de tous les onglets, dans l'ordre d'affichage.
 func (m *model) tabs() []Result {
-	if m.search == nil {
-		return m.results
-	}
-	out := make([]Result, 0, len(m.results)+1)
+	out := make([]Result, 0, len(m.results)+markTabs+1)
 	out = append(out, m.results...)
 	// Avant le premier chargement, on complète avec des onglets vides pour
-	// que l'onglet de recherche garde son index.
+	// que les onglets suivants gardent leur index.
 	for i := len(m.results); i < m.watchTabs(); i++ {
 		out = append(out, Result{Watch: m.cfg.Watches[i]})
 	}
-	return append(out, *m.search)
+	w := m.cfg.trendWindow()
+	out = append(out,
+		Result{Watch: Watch{Name: "♥ Favoris"}, Items: m.st.marked(markFav, w)},
+		Result{Watch: Watch{Name: "◷ À voir"}, Items: m.st.marked(markLater, w)})
+	if m.search != nil {
+		out = append(out, *m.search)
+	}
+	return out
 }
 
-func (m *model) onSearchTab() bool { return m.search != nil && m.tab == m.watchTabs() }
+func (m *model) onSearchTab() bool { return m.search != nil && m.tab == m.searchTab() }
 
 // updateSearchInput gère la barre de saisie de la recherche.
 func (m *model) updateSearchInput(msg tea.KeyMsg) tea.Cmd {
@@ -116,9 +121,9 @@ func (m *model) updateSearchInput(msg tea.KeyMsg) tea.Cmd {
 		m.search = &Result{Watch: Watch{Name: q}, Query: q}
 		m.searchLoading = true
 		m.resetCursors()
-		m.tab = m.watchTabs()
+		m.tab = m.searchTab()
 		m.cursor[m.tab], m.offset[m.tab] = 0, 0
-		return tea.Batch(m.spin.Tick, searchCmd(m.cfg, q, m.token))
+		return tea.Batch(m.spin.Tick, searchCmd(m.cfg, m.st, q, m.token))
 	}
 	var cmd tea.Cmd
 	m.searchInput, cmd = m.searchInput.Update(msg)
@@ -135,7 +140,7 @@ func (m *model) closeSearch() {
 
 // saveSearchAsWatch transforme la recherche courante en veille permanente :
 // elle est ajoutée à config.json, ses résultats deviennent un onglet normal
-// et ses dépôts sont marqués comme vus.
+// et sont mémorisés comme ceux d'une veille vérifiée.
 func (m *model) saveSearchAsWatch() {
 	if m.search == nil || m.searchLoading || m.search.Err != nil {
 		return
@@ -146,15 +151,6 @@ func (m *model) saveSearchAsWatch() {
 		return
 	}
 
-	state := loadState(m.cfg.StateFile)
-	now := time.Now()
-	for _, it := range m.search.Items {
-		if _, ok := state.Seen[it.FullName]; !ok {
-			state.Seen[it.FullName] = now
-		}
-	}
-	_ = state.save(m.cfg.StateFile)
-
 	if c, d, err := loadConfigWithInterval(m.cfgPath, m.intervalOverride); err == nil {
 		m.cfg, m.interval = c, d
 	}
@@ -163,6 +159,13 @@ func (m *model) saveSearchAsWatch() {
 	if len(res.Items) > res.Watch.Limit {
 		res.Items = res.Items[:res.Watch.Limit]
 	}
+	repos := make([]Repo, len(res.Items))
+	for i, it := range res.Items {
+		repos[i] = it.Repo
+	}
+	m.st.adopt(res.Watch, repos, time.Now())
+	_ = m.st.save(m.cfg.StateFile)
+
 	if m.results != nil {
 		m.results = append(m.results, res)
 	}

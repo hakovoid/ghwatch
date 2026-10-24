@@ -19,6 +19,7 @@ var (
 	cBarBg   = lipgloss.AdaptiveColor{Light: "#EEEBFA", Dark: "#1E1B2E"}
 	cSelBg   = lipgloss.AdaptiveColor{Light: "#F3F0FF", Dark: "#262140"}
 	cErr     = lipgloss.AdaptiveColor{Light: "#C53030", Dark: "#FF6B6B"}
+	cMark    = lipgloss.AdaptiveColor{Light: "#C2410C", Dark: "#FB923C"} // favoris, à voir
 	cOnColor = lipgloss.Color("#FFFFFF")
 )
 
@@ -42,6 +43,7 @@ var (
 	sErr      = lipgloss.NewStyle().Foreground(cErr).Bold(true)
 	sKey      = lipgloss.NewStyle().Foreground(cAccent2).Bold(true)
 	sTopic    = lipgloss.NewStyle().Foreground(cAccent).Background(cSelBg).Padding(0, 1)
+	sMark     = lipgloss.NewStyle().Foreground(cMark).Bold(true)
 )
 
 // Couleurs officielles GitHub des langages les plus courants.

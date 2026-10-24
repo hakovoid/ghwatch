@@ -40,10 +40,20 @@ premier `go build` et vérifiées grâce au fichier `go.sum`.
 ./ghwatch -tui -interval 6h
 ```
 
-- Un onglet par veille, avec le nombre de nouveautés.
-- Liste des dépôts : étoiles, langage, date de création, badge **NEW**.
-- Panneau de détail à droite (terminal ≥ 100 colonnes) : description, forks,
-  issues, licence, dernier commit, topics.
+- **S'ouvre instantanément** : les résultats sont mémorisés localement et
+  GitHub n'est interrogé que pour les veilles dont l'intervalle est écoulé
+  (voir [Mémoire locale](#mémoire-locale)). `r` force une vérification complète.
+- Un onglet par veille, avec le nombre de nouveautés, plus deux onglets
+  **♥ Favoris** et **◷ À voir** (`f` et `a` sur un dépôt).
+- Liste des dépôts : nom et badges (**NEW**, ♥, ◷) sur la première ligne,
+  langage, âge et description sur la seconde ; étoiles et progression dans une
+  colonne à droite, toujours alignée.
+- Panneau de détail **sous la liste** : description, **début du README**
+  (chargé à la demande puis mémorisé), étoiles, forks, issues, licence, site,
+  dates, topics. Sur un terminal large, le texte est à gauche et la fiche à
+  droite. `J` / `K` font défiler le détail, `v` le place à droite de la liste
+  (terminal ≥ 100 colonnes), `+` / `-` agrandissent ou réduisent la liste (le
+  détail prend le reste), `=` revient au partage par défaut.
 - Noms de dépôts et URL **cliquables** (Cmd+clic ou Ctrl+clic selon le
   terminal), dans les terminaux qui gèrent les liens OSC 8 : iTerm2, WezTerm,
   Kitty, Ghostty, Windows Terminal, GNOME Terminal, Konsole, VS Code…
@@ -59,10 +69,16 @@ premier `go build` et vérifiées grâce au fichier `go.sum`.
 | `←` `→` / `h` `l` / `tab` | veille précédente / suivante |
 | `Entrée` / `o` / clic | ouvrir le dépôt dans le navigateur |
 | `c` | copier le lien du dépôt |
+| `f` | ajouter / retirer des favoris ♥ |
+| `a` | ajouter / retirer de « à voir » ◷ |
+| `J` `K` | faire défiler le détail |
 | `/` | filtrer (nom, description, langage, topic) — `esc` pour effacer |
 | `s` | trier : étoiles → progression → plus récents → nom |
 | `n` | nouveautés uniquement / tout |
-| `r` | actualiser maintenant (recharge la config) |
+| `v` | détail en dessous / à droite |
+| `+` `-` | agrandir / réduire la liste (et inversement le détail) |
+| `=` | partage liste / détail par défaut |
+| `r` | tout revérifier maintenant (recharge la config) |
 | `S` | recherche GitHub ponctuelle (voir ci-dessous) |
 | `w` | depuis l'onglet de recherche : en faire une veille |
 | `x` | fermer l'onglet de recherche |
@@ -87,6 +103,36 @@ htmx in:name,description pushed:>2026-10-15
   vérifiée automatiquement à chaque intervalle.
 - `↑` `↓` dans la barre de saisie parcourent l'historique des 30 dernières
   recherches (`ghwatch-history.json`).
+
+## Mémoire locale
+
+Tout est conservé dans `ghwatch-state.json` (exclu de git) :
+
+- **les dépôts trouvés par chaque veille**, avec leurs détails (description,
+  étoiles, topics, licence…) et l'extrait de leur README ;
+- la date de dernière vérification de chaque veille ;
+- tes **favoris** et ta liste **à voir** ;
+- l'historique des étoiles (90 jours) et la date où chaque dépôt a été vu
+  pour la première fois.
+
+Conséquences :
+
+- **Rouvrir la TUI ne relance pas les recherches** : tant que l'intervalle
+  n'est pas écoulé, elle affiche ce qui est mémorisé. Ensuite, seules les
+  veilles « dues » sont revérifiées. Une veille ajoutée à `config.json` est
+  vérifiée dès le lancement suivant.
+- **Les résultats s'accumulent** : chaque vérification ajoute les nouveaux
+  dépôts à ceux déjà trouvés. Une veille n'est donc plus limitée aux `limit`
+  du dernier passage. Un dépôt qu'aucune vérification ne retrouve pendant
+  `keep` (30 jours par défaut) est oublié, sauf s'il est en favori ou à voir.
+  Les critères de date restent respectés : un dépôt sort de « créés depuis
+  moins de 7 jours » quand il a plus de 7 jours.
+- **NEW** marque les dépôts découverts lors de la dernière vérification.
+- Le README d'un dépôt n'est téléchargé que lorsque tu le sélectionnes (une
+  requête, mémorisée 30 jours).
+
+Le mode texte (`./ghwatch`, `-once`) vérifie toujours toutes les veilles :
+il est lancé exprès, ou par cron.
 
 ## Ce que vérifie l'automatisme
 
@@ -129,9 +175,10 @@ Pour repartir de zéro, supprime ce fichier.
 | Champ | Exemple | Rôle |
 |---|---|---|
 | `interval` | `"30m"`, `"6h"`, `"1d"`, `"1w"` | Fréquence des vérifications (minimum 1m) |
-| `state_file` | `"ghwatch-state.json"` | Dépôts déjà vus |
+| `state_file` | `"ghwatch-state.json"` | Mémoire locale (dépôts, favoris, README…) |
 | `reports_dir` | `"reports"` | Dossier des rapports (`""` = désactivé) |
 | `trend_window` | `"7d"` | Période de mesure de la progression des étoiles (défaut 7d) |
+| `keep` | `"30d"` | Durée de conservation d'un dépôt qu'aucune vérification ne retrouve (défaut 30d) |
 | `watches` | liste | Tes veilles |
 
 La config est relue à chaque passage : tu peux changer les thèmes ou la

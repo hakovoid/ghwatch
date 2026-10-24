@@ -20,6 +20,8 @@ type Repo struct {
 	Forks       int       `json:"forks_count"`
 	Issues      int       `json:"open_issues_count"`
 	Language    string    `json:"language"`
+	Homepage    string    `json:"homepage"`
+	Archived    bool      `json:"archived"`
 	Topics      []string  `json:"topics"`
 	CreatedAt   time.Time `json:"created_at"`
 	PushedAt    time.Time `json:"pushed_at"`
@@ -50,33 +52,59 @@ func searchRepos(q, sortBy string, limit int, token string) ([]Repo, error) {
 		"order":    {"desc"},
 		"per_page": {strconv.Itoa(limit)},
 	}.Encode()
-
-	req, _ := http.NewRequest("GET", u, nil)
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	req.Header.Set("User-Agent", "ghwatch")
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
-
-	resp, err := httpClient.Do(req)
+	body, status, err := apiGet(u, "application/vnd.github+json", token)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		var e struct {
-			Message string `json:"message"`
-		}
-		if json.Unmarshal(body, &e) == nil && e.Message != "" {
-			return nil, fmt.Errorf("GitHub %d : %s", resp.StatusCode, e.Message)
-		}
-		return nil, fmt.Errorf("GitHub %d", resp.StatusCode)
+	if status != http.StatusOK {
+		return nil, apiError(status, body)
 	}
 	var r searchResp
 	if err := json.Unmarshal(body, &r); err != nil {
 		return nil, err
 	}
 	return r.Items, nil
+}
+
+const apiMaxBytes = 8 << 20 // garde-fou : une recherche de 100 dépôts pèse moins de 1 Mo
+
+// fetchReadme renvoie un extrait en texte du README d'un dépôt ("" s'il n'en a pas).
+func fetchReadme(fullName, token string) (string, error) {
+	body, status, err := apiGet(apiBase()+"/repos/"+fullName+"/readme", "application/vnd.github.raw+json", token)
+	switch {
+	case err != nil:
+		return "", err
+	case status == http.StatusNotFound:
+		return "", nil
+	case status != http.StatusOK:
+		return "", apiError(status, body)
+	}
+	return readmeText(string(body), readmeMaxChars), nil
+}
+
+func apiGet(u, accept, token string) ([]byte, int, error) {
+	req, _ := http.NewRequest("GET", u, nil)
+	req.Header.Set("Accept", accept)
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	req.Header.Set("User-Agent", "ghwatch")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, apiMaxBytes))
+	return body, resp.StatusCode, err
+}
+
+func apiError(status int, body []byte) error {
+	var e struct {
+		Message string `json:"message"`
+	}
+	if json.Unmarshal(body, &e) == nil && e.Message != "" {
+		return fmt.Errorf("GitHub %d : %s", status, e.Message)
+	}
+	return fmt.Errorf("GitHub %d", status)
 }

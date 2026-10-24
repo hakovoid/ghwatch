@@ -16,6 +16,7 @@ type Config struct {
 	StateFile   string  `json:"state_file"`             // dépôts déjà vus
 	ReportsDir  string  `json:"reports_dir,omitempty"`  // rapports Markdown ("" = désactivé)
 	TrendWindow string  `json:"trend_window,omitempty"` // période de progression des étoiles (défaut 7d)
+	Keep        string  `json:"keep,omitempty"`         // durée de conservation des dépôts plus retrouvés (défaut 30d)
 	Watches     []Watch `json:"watches"`
 }
 
@@ -55,6 +56,11 @@ func loadConfig(path string) (*Config, error) {
 			return nil, fmt.Errorf("trend_window invalide %q (minimum 1h)", c.TrendWindow)
 		}
 	}
+	if c.Keep != "" {
+		if d, err := parseDuration(c.Keep); err != nil || d < 24*time.Hour {
+			return nil, fmt.Errorf("keep invalide %q (minimum 1d)", c.Keep)
+		}
+	}
 	for i := range c.Watches {
 		w := &c.Watches[i]
 		if w.Limit <= 0 {
@@ -79,6 +85,15 @@ func (c *Config) trendWindow() time.Duration {
 		return d
 	}
 	return 7 * 24 * time.Hour
+}
+
+// keep renvoie combien de temps un dépôt reste dans une veille après avoir
+// été trouvé pour la dernière fois (30 jours par défaut).
+func (c *Config) keep() time.Duration {
+	if d, err := parseDuration(c.Keep); err == nil && d >= 24*time.Hour {
+		return d
+	}
+	return 30 * 24 * time.Hour
 }
 
 // loadConfigWithInterval charge la config, applique un éventuel intervalle

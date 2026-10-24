@@ -58,6 +58,11 @@ func TestNavigationAndTabs(t *testing.T) {
 	if m.tab != 1 {
 		t.Fatalf("onglet = %d, attendu 1", m.tab)
 	}
+	m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	if m.tab != m.markTab(markLater) {
+		t.Fatalf("onglet = %d, attendu « À voir » après les veilles et les favoris", m.tab)
+	}
 	m.Update(tea.KeyMsg{Type: tea.KeyRight}) // reboucle
 	if m.tab != 0 || m.cursor[0] != 2 {
 		t.Fatalf("onglet=%d curseur=%d : la position devrait être conservée", m.tab, m.cursor[0])
@@ -186,5 +191,61 @@ func TestCopyLink(t *testing.T) {
 	m.Update(cmd())
 	if got != "https://github.com/a/two" || !strings.Contains(m.status, "copié") {
 		t.Fatalf("copié %q, statut %q", got, m.status)
+	}
+}
+
+func key(s string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
+
+// La vue doit tenir dans le terminal et garder la même hauteur, quelle que
+// soit la disposition et le partage liste / détail.
+func TestLayoutFillsScreen(t *testing.T) {
+	m := testModel(t)
+	for _, size := range [][2]int{{120, 30}, {80, 40}, {120, 12}, {160, 50}} {
+		m.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+		want := -1
+		for _, side := range []bool{false, true} {
+			m.sideBySide = side
+			for _, split := range []int{splitMin, splitDefault, splitMax} {
+				m.split = split
+				got := lipgloss.Height(m.View())
+				if want < 0 {
+					want = got
+				}
+				if got != want || got > size[1] {
+					t.Errorf("%dx%d côte à côte=%v split=%d : %d lignes", size[0], size[1], side, split, got)
+				}
+			}
+		}
+	}
+}
+
+func TestStackedByDefault(t *testing.T) {
+	m := testModel(t)
+	if !m.showStacked() || m.showSideBySide() {
+		t.Fatal("le détail doit être sous la liste par défaut")
+	}
+	m.Update(key("v"))
+	if !m.showSideBySide() {
+		t.Fatal("v doit passer en vue côte à côte")
+	}
+}
+
+func TestResizeClamps(t *testing.T) {
+	m := testModel(t)
+	for range 10 {
+		m.Update(key("+"))
+	}
+	if m.split != splitMax {
+		t.Errorf("split = %d, attendu %d", m.split, splitMax)
+	}
+	for range 10 {
+		m.Update(key("-"))
+	}
+	if m.split != splitMin {
+		t.Errorf("split = %d, attendu %d", m.split, splitMin)
+	}
+	m.Update(key("="))
+	if m.split != splitDefault {
+		t.Errorf("split = %d, attendu %d", m.split, splitDefault)
 	}
 }
