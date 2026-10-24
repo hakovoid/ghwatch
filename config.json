@@ -2,6 +2,7 @@
   "interval": "1d",
   "state_file": "ghwatch-state.json",
   "reports_dir": "reports",
+  "trend_window": "7d",
   "watches": [
     {
       "name": "IA & agents · nouveautés de la semaine",
@@ -31,6 +32,19 @@
       "created_within": "30d",
       "min_stars": 500,
       "limit": 10
+    },
+    {
+      "name": "IA & agents · populaires et actifs",
+      "any": [
+        "topic:llm",
+        "topic:ai-agents",
+        "topic:claude-code",
+        "topic:mcp",
+        "topic:agent-skills"
+      ],
+      "pushed_within": "7d",
+      "min_stars": 5000,
+      "limit": 30
     },
     {
       "name": "Projets Go qui montent",

@@ -34,7 +34,7 @@ vérifiées par le serveur officiel de Go) : commite-le ensuite.
 | `←` `→` / `h` `l` / `tab` | veille précédente / suivante |
 | `Entrée` / `o` | ouvrir le dépôt dans le navigateur |
 | `/` | filtrer (nom, description, langage, topic) — `esc` pour effacer |
-| `s` | trier : étoiles → plus récents → nom |
+| `s` | trier : étoiles → progression → plus récents → nom |
 | `n` | nouveautés uniquement / tout |
 | `r` | actualiser maintenant (recharge la config) |
 | `S` | recherche GitHub ponctuelle (voir ci-dessous) |
@@ -77,6 +77,9 @@ La config fournie surveille par défaut :
 - **IA & agents · ce qui monte ce mois-ci** : projets de moins de 30 jours
   déjà au-dessus de 500 ★ (ceux qui décollent, même s'ils ont raté la
   première semaine).
+- **IA & agents · populaires et actifs** : projets IA établis (≥ 5 000 ★)
+  avec un commit dans les 7 derniers jours, quelle que soit leur date de
+  création. Triés par progression, ils montrent ce qui monte en ce moment.
 - **Projets Go qui montent** et **Outils CLI récents**.
 Pour changer ce qui est surveillé, modifie les veilles dans `config.json`
 (relu à chaque passage) ou enregistre une recherche avec `w`.
@@ -102,6 +105,7 @@ Pour repartir de zéro, supprime ce fichier.
 | `interval` | `"30m"`, `"6h"`, `"1d"`, `"1w"` | Fréquence des vérifications (minimum 1m) |
 | `state_file` | `"ghwatch-state.json"` | Dépôts déjà vus |
 | `reports_dir` | `"reports"` | Dossier des rapports (`""` = désactivé) |
+| `trend_window` | `"7d"` | Période de mesure de la progression des étoiles (défaut 7d) |
 | `watches` | liste | Tes veilles |
 
 La config est relue à chaque passage : tu peux changer les thèmes ou la
@@ -151,6 +155,31 @@ description (`claude in:name,description`), ou même dans le README
 Chaque terme compte comme une recherche : GitHub en autorise 30 par minute
 avec un token et 10 sans. ghwatch espace les requêtes en conséquence
 (2 s avec token, 6,5 s sans) : avec beaucoup de termes, configure un token.
+
+### Progression des étoiles
+
+L'API de recherche GitHub donne le nombre d'étoiles actuel, pas son
+historique. ghwatch le construit lui-même : à chaque vérification, il
+enregistre le nombre d'étoiles de chaque dépôt trouvé (dans le fichier
+d'état, 90 jours conservés).
+
+- **Dès la 2e vérification**, la TUI affiche le gain (« ▲ +1.8k ») dans la
+  liste, et une mini-courbe des relevés dans le panneau de détail.
+- Le gain est mesuré sur `trend_window` (7 jours par défaut). Tant que
+  l'historique est plus court, il l'est depuis le premier relevé, et la
+  période réelle est indiquée (« en 3 j »).
+- `s` → **progression** trie par étoiles gagnées : c'est l'équivalent de
+  GitHub Trending, limité aux dépôts de tes veilles.
+- Un dépôt n'a d'historique que s'il est vérifié régulièrement : il doit
+  rester dans les résultats d'une veille.
+
+### Nouveaux projets ou projets établis ?
+
+`created_within` ne garde que les projets **nés** récemment : un projet de
+6 mois qui explose n'y apparaîtra jamais. Pour suivre les projets établis,
+utilise plutôt `pushed_within` (activité récente) avec un seuil d'étoiles
+élevé, et trie par progression. C'est le rôle de la veille
+« IA & agents · populaires et actifs » de la config d'exemple.
 
 ## Lancer automatiquement
 
