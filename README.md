@@ -37,8 +37,38 @@ vérifiées par le serveur officiel de Go) : commite-le ensuite.
 | `s` | trier : étoiles → plus récents → nom |
 | `n` | nouveautés uniquement / tout |
 | `r` | actualiser maintenant (recharge la config) |
+| `S` | recherche GitHub ponctuelle (voir ci-dessous) |
+| `w` | depuis l'onglet de recherche : en faire une veille |
+| `x` | fermer l'onglet de recherche |
 | `?` | aide |
 | `q` | quitter |
+
+### Recherche GitHub
+
+`S` ouvre une barre de saisie qui accepte toute la
+[syntaxe de recherche GitHub](https://docs.github.com/fr/search-github/searching-on-github/searching-for-repositories) :
+
+```
+rag language:python stars:>100
+topic:agents created:>2026-10-01
+htmx in:name,description pushed:>2026-10-15
+```
+
+- Les 30 meilleurs résultats (par étoiles) s'ouvrent dans un onglet « ⌕ »,
+  avec détail, tri, filtre et ouverture comme les veilles.
+- Une recherche ne modifie ni tes veilles ni la liste des dépôts déjà vus.
+- `w` l'ajoute à `config.json` comme nouvelle veille : elle sera alors
+  vérifiée automatiquement à chaque intervalle.
+- `↑` `↓` dans la barre de saisie parcourent l'historique des 30 dernières
+  recherches (`ghwatch-history.json`).
+
+## Ce que vérifie l'automatisme
+
+À chaque intervalle, ghwatch relance **chaque veille de `config.json`**, et
+seulement celles-ci, sur l'API de recherche GitHub. Il compare les résultats
+aux dépôts déjà vus : ceux qui n'ont jamais été vus sont marqués **NEW**.
+Pour changer ce qui est surveillé, modifie les veilles dans `config.json`
+(relu à chaque passage) ou enregistre une recherche avec `w`.
 
 ## Mode texte
 
