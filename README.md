@@ -1,18 +1,37 @@
 # ghwatch
 
+```
+  ░█▀▀░█░█░█░█░█▀█░▀█▀░█▀▀░█░█
+  ░█░█░█▀█░█▄█░█▀█░░█░░█░░░█▀█
+  ░▀▀▀░▀░▀░▀░▀░▀░▀░░▀░░▀▀▀░▀░▀
+  veille GitHub · dans le terminal   ★ ▲ NEW
+```
+
+<p align="center">
+  <img alt="Go 1.24+" src="https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go&logoColor=white">
+  <img alt="Bubble Tea" src="https://img.shields.io/badge/TUI-Bubble%20Tea-FF5F87">
+  <img alt="Bubbles" src="https://img.shields.io/badge/Bubbles-composants-FF87D7">
+  <img alt="Lip Gloss" src="https://img.shields.io/badge/Lip%20Gloss-styles-B794F4">
+  <img alt="Termenv" src="https://img.shields.io/badge/Termenv-th%C3%A8me%20clair%2Fsombre-6E7781">
+  <img alt="API GitHub Search" src="https://img.shields.io/badge/API-GitHub%20Search-181717?logo=github&logoColor=white">
+  <img alt="Liens OSC 8" src="https://img.shields.io/badge/liens-OSC%208-3FB950">
+  <img alt="JSON" src="https://img.shields.io/badge/stockage-JSON-000000?logo=json&logoColor=white">
+</p>
+
 Veille des dépôts GitHub récents ou populaires, par thème, langage et date,
 en mode texte ou avec une interface interactive dans le terminal (TUI).
 
 ## Installation
 
 ```bash
-go mod tidy                   # la première fois : télécharge et vérifie les dépendances
+git clone git@github.com:hakovoid/ghwatch.git
+cd ghwatch
 go build -o ghwatch .
 export GITHUB_TOKEN=ghp_xxx   # recommandé : https://github.com/settings/tokens (aucun scope requis)
 ```
 
-`go mod tidy` crée le fichier `go.sum` (sommes de contrôle des dépendances,
-vérifiées par le serveur officiel de Go) : commite-le ensuite.
+Go 1.24 ou plus récent est nécessaire. Les dépendances sont téléchargées au
+premier `go build` et vérifiées grâce au fichier `go.sum`.
 
 ## Interface (TUI)
 
