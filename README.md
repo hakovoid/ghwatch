@@ -21,6 +21,8 @@
 Veille des dépôts GitHub récents ou populaires, par thème, langage et date,
 en mode texte ou avec une interface interactive dans le terminal (TUI).
 
+Nouveautés de chaque version : [notes de version](CHANGELOG.md).
+
 ## Installation
 
 ```bash
