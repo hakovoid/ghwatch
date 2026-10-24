@@ -1,10 +1,12 @@
 package main
 
 import (
+	"strings"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 func testModel(t *testing.T) *model {
@@ -120,5 +122,35 @@ func TestSortFilterNewOnly(t *testing.T) {
 	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	if len(m.visible()) != 3 {
 		t.Fatal("esc devrait effacer le filtre")
+	}
+}
+
+func TestHelpToggle(t *testing.T) {
+	m := testModel(t)
+	typeText(m, "?")
+	if !m.showHelp || !strings.Contains(m.View(), "Raccourcis clavier") {
+		t.Fatal("« ? » devrait afficher l'aide")
+	}
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	if m.showHelp || cmd != nil {
+		t.Fatal("une touche devrait fermer l'aide sans quitter")
+	}
+}
+
+// Aucune vue ne doit dépasser la taille du terminal, quelle qu'elle soit.
+func TestViewFitsTerminal(t *testing.T) {
+	for _, size := range [][2]int{{60, 16}, {80, 24}, {120, 30}, {200, 50}} {
+		m := testModel(t)
+		m.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+		for _, keys := range []string{"", "?"} {
+			typeText(m, keys)
+			v := m.View()
+			if h := lipgloss.Height(v); h > size[1] {
+				t.Errorf("%dx%d (touches %q) : hauteur %d", size[0], size[1], keys, h)
+			}
+			if w := lipgloss.Width(v); w > size[0] {
+				t.Errorf("%dx%d (touches %q) : largeur %d", size[0], size[1], keys, w)
+			}
+		}
 	}
 }

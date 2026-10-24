@@ -67,6 +67,7 @@ type model struct {
 	filtering bool // saisie du filtre en cours
 	sort      sortMode
 	newOnly   bool
+	showHelp  bool
 }
 
 func runTUI(cfgPath, intervalOverride, token string) error {
@@ -263,7 +264,16 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.filtering {
 			return m, m.updateFilter(msg)
 		}
+		if m.showHelp { // n'importe quelle touche ferme l'aide
+			m.showHelp = false
+			if msg.String() == "ctrl+c" {
+				return m, tea.Quit
+			}
+			return m, nil
+		}
 		switch msg.String() {
+		case "?":
+			m.showHelp = true
 		case "/":
 			m.filtering = true
 			return m, m.filter.Focus()
@@ -359,7 +369,10 @@ func (m *model) View() string {
 	footer := m.viewFooter()
 	h := m.listHeight()
 	var body string
-	if m.width >= 100 { // assez large : liste à gauche, détail à droite
+	if m.showHelp {
+		body = lipgloss.NewStyle().MaxHeight(h).MaxWidth(m.width).Render(
+			lipgloss.Place(m.width, h, lipgloss.Center, lipgloss.Center, m.viewHelp()))
+	} else if m.width >= 100 { // assez large : liste à gauche, détail à droite
 		lw := m.width * 56 / 100
 		list := lipgloss.NewStyle().Width(lw).Height(h).MaxHeight(h).Render(m.viewList(lw - 1))
 		body = lipgloss.JoinHorizontal(lipgloss.Top, list, m.viewDetail(m.width-lw, h))
@@ -380,9 +393,20 @@ func (m *model) viewHeader() string {
 		if now.IsZero() {
 			now = time.Now()
 		}
-		right = "vérifié à " + m.lastRun.Format("15:04") + "  ·  prochaine dans " +
-			lipgloss.NewStyle().Foreground(cAccent).Background(cBarBg).Render(humanDur(m.nextRun.Sub(now))) +
-			sBar.Render("  ·  tous les "+humanDur(m.interval))
+		countdown := lipgloss.NewStyle().Foreground(cAccent).Background(cBarBg).Render(humanDur(m.nextRun.Sub(now)))
+		// Du plus détaillé au plus court : on garde la première version qui tient.
+		for _, c := range []string{
+			sBar.Render("vérifié à "+m.lastRun.Format("15:04")+"  ·  prochaine dans ") + countdown +
+				sBar.Render("  ·  tous les "+humanDur(m.interval)),
+			sBar.Render("vérifié à "+m.lastRun.Format("15:04")+"  ·  prochaine dans ") + countdown,
+			sBar.Render("prochaine dans ") + countdown,
+			countdown,
+		} {
+			right = c
+			if lipgloss.Width(left)+lipgloss.Width(c)+1 <= m.width {
+				break
+			}
+		}
 	}
 	right = sBar.Render(right + " ")
 	gap := max(m.width-lipgloss.Width(left)-lipgloss.Width(right), 0)
@@ -564,7 +588,12 @@ func (m *model) viewFooter() string {
 	}
 	keys := []struct{ k, v string }{
 		{"↑↓", "naviguer"}, {"←→", "veilles"}, {"⏎", "ouvrir"}, {"/", "filtrer"},
-		{"s", "trier"}, {"n", "nouveautés"}, {"r", "actualiser"}, {"q", "quitter"},
+		{"s", "trier"}, {"n", "nouveautés"}, {"r", "actualiser"}, {"?", "aide"}, {"q", "quitter"},
+	}
+	if m.width < 125 { // terminal étroit : l'essentiel, le reste est dans l'aide
+		keys = []struct{ k, v string }{
+			{"↑↓", "naviguer"}, {"⏎", "ouvrir"}, {"/", "filtrer"}, {"?", "aide"}, {"q", "quitter"},
+		}
 	}
 	var parts []string
 	for _, k := range keys {
@@ -578,6 +607,53 @@ func (m *model) viewFooter() string {
 	}
 	gap := max(m.width-lipgloss.Width(help)-lipgloss.Width(pos), 1)
 	return ansi.Truncate(help+strings.Repeat(" ", gap)+pos, m.width, "")
+}
+
+func (m *model) viewHelp() string {
+	groups := []struct {
+		title string
+		keys  [][2]string
+	}{
+		{"Navigation", [][2]string{
+			{"↑ ↓  j k", "dépôt précédent / suivant"},
+			{"← →  h l  tab", "veille précédente / suivante"},
+			{"PgUp PgDn  espace", "page précédente / suivante"},
+			{"g G  début fin", "premier / dernier dépôt"},
+		}},
+		{"Actions", [][2]string{
+			{"⏎  o", "ouvrir le dépôt dans le navigateur"},
+			{"r", "actualiser maintenant (recharge la config)"},
+		}},
+		{"Affichage", [][2]string{
+			{"/", "filtrer (nom, description, langage, topic)"},
+			{"esc", "effacer le filtre"},
+			{"s", "trier : étoiles → plus récents → nom"},
+			{"n", "nouveautés uniquement / tout"},
+		}},
+		{"", [][2]string{{"?", "aide"}, {"q  ctrl+c", "quitter"}}},
+	}
+	compact := m.listHeight() < 28 // petit terminal : pas de lignes vides entre groupes
+	var b strings.Builder
+	b.WriteString(sRepoSel.Render("Raccourcis clavier") + "\n")
+	for _, g := range groups {
+		if !compact {
+			b.WriteString("\n")
+		}
+		if g.title != "" {
+			b.WriteString(sMuted.Render(strings.ToUpper(g.title)) + "\n")
+		}
+		for _, k := range g.keys {
+			b.WriteString(sKey.Render(fmt.Sprintf("%-20s", k[0])) + sDesc.Render(k[1]) + "\n")
+		}
+	}
+	b.WriteString("\n" + sMuted.Render(fmt.Sprintf("Vérification tous les %s · %s", humanDur(m.interval), m.cfgPath)))
+	b.WriteString("\n" + sMuted.Render("Une touche pour fermer"))
+	pad := 1
+	if compact {
+		pad = 0
+	}
+	return lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(cAccent).
+		Padding(pad, 3).MaxHeight(m.listHeight()).Render(b.String())
 }
 
 // relTime : « aujourd'hui », « il y a 3 j », « il y a 2 mois »…
