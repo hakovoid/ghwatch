@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -98,3 +100,46 @@ func TestSearchOpensTemporaryTab(t *testing.T) {
 }
 
 func timeAfter() <-chan time.Time { return time.After(2 * time.Second) }
+
+func TestSaveSearchAsWatch(t *testing.T) {
+	var q string
+	fakeGitHub(t, &q)
+	m := testModel(t)
+	m.cfgPath = t.TempDir() + "/config.json"
+	if err := os.WriteFile(m.cfgPath, []byte(`{"interval":"1h","state_file":"`+m.cfg.StateFile+`","watches":[{"name":"A","language":"go"},{"name":"B","language":"rust"}]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	submitSearch(t, m, "rag stars:>100")
+	typeText(m, "w")
+
+	cfg, err := loadConfig(m.cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Watches) != 3 || cfg.Watches[2].Query != "rag stars:>100" {
+		t.Fatalf("veille non ajoutée : %+v", cfg.Watches)
+	}
+	raw, _ := os.ReadFile(m.cfgPath)
+	if !strings.Contains(string(raw), `"query": "rag stars:>100"`) {
+		t.Errorf("la requête doit rester lisible dans config.json :\n%s", raw)
+	}
+	if strings.Contains(string(raw), `"min_stars"`) {
+		t.Errorf("les valeurs par défaut ne doivent pas être écrites :\n%s", raw)
+	}
+	if m.search != nil || len(m.results) != 3 || m.tab != 2 {
+		t.Fatalf("la recherche devrait devenir le 3e onglet (tab=%d, results=%d)", m.tab, len(m.results))
+	}
+	if _, seen := loadState(m.cfg.StateFile).Seen["x/found"]; !seen {
+		t.Error("les dépôts de la nouvelle veille devraient être marqués comme vus")
+	}
+
+	// Une deuxième fois : refusé, pas de doublon.
+	submitSearch(t, m, "rag stars:>100")
+	typeText(m, "w")
+	if cfg, _ := loadConfig(m.cfgPath); len(cfg.Watches) != 3 {
+		t.Fatal("doublon ajouté")
+	}
+	if !strings.Contains(m.status, "déjà") {
+		t.Errorf("statut attendu « déjà une veille », got %q", m.status)
+	}
+}

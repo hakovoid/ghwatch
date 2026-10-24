@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,22 +11,22 @@ import (
 )
 
 type Config struct {
-	Interval   string  `json:"interval"`    // ex: "6h", "1d", "1w", "30m"
-	StateFile  string  `json:"state_file"`  // dépôts déjà vus
-	ReportsDir string  `json:"reports_dir"` // rapports Markdown ("" = désactivé)
+	Interval   string  `json:"interval"`              // ex: "6h", "1d", "1w", "30m"
+	StateFile  string  `json:"state_file"`            // dépôts déjà vus
+	ReportsDir string  `json:"reports_dir,omitempty"` // rapports Markdown ("" = désactivé)
 	Watches    []Watch `json:"watches"`
 }
 
 type Watch struct {
 	Name          string   `json:"name"`
-	Query         string   `json:"query"`          // requête GitHub brute (optionnelle)
-	Topics        []string `json:"topics"`         // ex: [llm, agents]
-	Language      string   `json:"language"`       // ex: go
-	MinStars      int      `json:"min_stars"`      // ex: 50
-	CreatedWithin string   `json:"created_within"` // ex: "7d" → créés ces 7 derniers jours
-	PushedWithin  string   `json:"pushed_within"`  // ex: "2d" → actifs récemment
-	Sort          string   `json:"sort"`           // stars | forks | updated (défaut: stars)
-	Limit         int      `json:"limit"`          // défaut: 10, max: 100
+	Query         string   `json:"query,omitempty"`          // requête GitHub brute (optionnelle)
+	Topics        []string `json:"topics,omitempty"`         // ex: [llm, agents]
+	Language      string   `json:"language,omitempty"`       // ex: go
+	MinStars      int      `json:"min_stars,omitempty"`      // ex: 50
+	CreatedWithin string   `json:"created_within,omitempty"` // ex: "7d" → créés ces 7 derniers jours
+	PushedWithin  string   `json:"pushed_within,omitempty"`  // ex: "2d" → actifs récemment
+	Sort          string   `json:"sort,omitempty"`           // stars | forks | updated (défaut: stars)
+	Limit         int      `json:"limit,omitempty"`          // défaut: 10, max: 100
 }
 
 func loadConfig(path string) (*Config, error) {
@@ -134,4 +135,39 @@ func buildQuery(w Watch, now time.Time) (string, error) {
 		return "", fmt.Errorf("veille %q : aucun critère", w.Name)
 	}
 	return strings.Join(parts, " "), nil
+}
+
+// errWatchExists : une veille avec la même requête existe déjà.
+var errWatchExists = fmt.Errorf("cette recherche est déjà une veille")
+
+// appendWatch ajoute une veille au fichier de config, sans y écrire les
+// valeurs par défaut des autres veilles.
+func appendWatch(path string, w Watch) error {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	var raw Config
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return fmt.Errorf("config invalide: %w", err)
+	}
+	for _, existing := range raw.Watches {
+		if w.Query != "" && strings.EqualFold(strings.TrimSpace(existing.Query), strings.TrimSpace(w.Query)) {
+			return errWatchExists
+		}
+	}
+	raw.Watches = append(raw.Watches, w)
+	// SetEscapeHTML(false) : garde « stars:>100 » lisible au lieu de « \u003e ».
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(raw); err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, buf.Bytes(), 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }

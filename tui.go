@@ -272,7 +272,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			r := msg.result
 			m.search, m.searchLoading = &r, false
 			if r.Err == nil {
-				m.status = fmt.Sprintf("%d dépôt(s) trouvé(s) · x pour fermer", len(r.Items))
+				m.status = fmt.Sprintf("%d dépôt(s) trouvé(s) · w pour en faire une veille · x pour fermer", len(r.Items))
 			}
 		}
 
@@ -307,6 +307,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "x":
 			if m.onSearchTab() {
 				m.closeSearch()
+			}
+		case "w":
+			if m.onSearchTab() {
+				m.saveSearchAsWatch()
 			}
 		case "/":
 			m.filtering = true
@@ -679,6 +683,7 @@ func (m *model) viewHelp() string {
 		}},
 		{"Recherche GitHub", [][2]string{
 			{"S", "nouvelle recherche (syntaxe GitHub)"},
+			{"w", "enregistrer la recherche comme veille"},
 			{"x", "fermer l'onglet de recherche"},
 		}},
 		{"Affichage", [][2]string{

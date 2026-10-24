@@ -107,3 +107,42 @@ func (m *model) closeSearch() {
 		m.tab = max(len(m.cursor)-1, 0)
 	}
 }
+
+// saveSearchAsWatch transforme la recherche courante en veille permanente :
+// elle est ajoutée à config.json, ses résultats deviennent un onglet normal
+// et ses dépôts sont marqués comme vus.
+func (m *model) saveSearchAsWatch() {
+	if m.search == nil || m.searchLoading || m.search.Err != nil {
+		return
+	}
+	w := Watch{Name: m.search.Query, Query: m.search.Query, Limit: 10}
+	if err := appendWatch(m.cfgPath, w); err != nil {
+		m.status = "veille non ajoutée : " + err.Error()
+		return
+	}
+
+	state := loadState(m.cfg.StateFile)
+	now := time.Now()
+	for _, it := range m.search.Items {
+		if _, ok := state.Seen[it.FullName]; !ok {
+			state.Seen[it.FullName] = now
+		}
+	}
+	_ = state.save(m.cfg.StateFile)
+
+	if c, d, err := loadConfigWithInterval(m.cfgPath, m.intervalOverride); err == nil {
+		m.cfg, m.interval = c, d
+	}
+	res := *m.search
+	res.Watch = m.cfg.Watches[len(m.cfg.Watches)-1]
+	if len(res.Items) > res.Watch.Limit {
+		res.Items = res.Items[:res.Watch.Limit]
+	}
+	if m.results != nil {
+		m.results = append(m.results, res)
+	}
+	m.search, m.searchLoading = nil, false
+	m.resetCursors()
+	m.tab = m.watchTabs() - 1
+	m.status = "veille ajoutée à " + m.cfgPath + " — suivie à chaque vérification"
+}
