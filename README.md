@@ -70,7 +70,13 @@ dossier (il contient un `config.json` d'exemple).
   il faut la version 3.4+ avec `set -ga terminal-features "*:hyperlinks"`.
   Si des caractères parasites s'affichent, lance avec `-links=false`.
 - Rafraîchissement automatique selon `interval`, compte à rebours en haut à droite.
-- Thème qui s'adapte aux terminaux clairs et sombres.
+- **6 thèmes de couleurs** (les mêmes que vulnkb) : violet, bleu, rose, vert,
+  cyan, orange. `T` passe au suivant ; le choix est mémorisé, comme la
+  disposition. Chaque thème s'adapte aux terminaux clairs et sombres.
+  `./ghwatch -tui -theme vert` choisit un thème (mémorisé),
+  `GHWATCH_THEME=cyan ./ghwatch -tui` le force pour une session.
+- Les emoji des descriptions et des README sont retirés à l'affichage : leur
+  largeur varie selon les terminaux et décalait l'écran.
 
 | Touche | Action |
 |---|---|
@@ -91,6 +97,7 @@ dossier (il contient un `config.json` d'exemple).
 | `S` | recherche GitHub ponctuelle (voir ci-dessous) |
 | `w` | depuis l'onglet de recherche : en faire une veille |
 | `x` | fermer l'onglet de recherche |
+| `T` | thème de couleurs suivant |
 | `?` | aide |
 | `q` | quitter |
 
@@ -162,8 +169,36 @@ La config fournie surveille par défaut :
   avec un commit dans les 7 derniers jours, quelle que soit leur date de
   création. Triés par progression, ils montrent ce qui monte en ce moment.
 - **Projets Go qui montent** et **Outils CLI récents**.
+- **Cyber · nouveautés de la semaine** : projets de moins de 7 jours, ≥ 20 ★,
+  avec un topic `cybersecurity`, `security`, `pentesting`, `red-team`,
+  `bug-bounty`, `threat-intelligence`, `malware-analysis` ou `vulnerability`,
+  ou « security » / « pentest » dans leur nom ou leur description.
+- **OSINT · nouveautés du mois** : projets de moins de 30 jours, ≥ 10 ★, avec
+  un topic `osint`, `reconnaissance` ou `recon`, ou « osint » dans leur nom
+  ou leur description.
+- **Cyber & OSINT · populaires et actifs** : outils établis (≥ 2 000 ★) avec
+  un commit dans les 7 derniers jours (Sherlock, x64dbg…).
+
 Pour changer ce qui est surveillé, modifie les veilles dans `config.json`
 (relu à chaque passage) ou enregistre une recherche avec `w`.
+
+### Trouver un nouveau sujet
+
+1. **Chercher les bons topics** : sur GitHub, les topics sont choisis par les
+   auteurs. Ouvre `https://github.com/topics/<sujet>` (ex. `osint`,
+   `threat-hunting`, `forensics`) ou regarde les topics des dépôts que tu
+   connais dans le panneau de détail : ce sont eux qu'il faut viser.
+2. **Essayer dans la TUI** : `S` puis par exemple
+   `topic:osint created:>2026-09-01 stars:>10`. Ajuste jusqu'à avoir des
+   résultats pertinents.
+3. **Enregistrer** : `w` en fait une veille. Pour ratisser plus large
+   (plusieurs topics ou mots-clés en OU), édite-la dans `config.json` avec
+   `any`, sur le modèle des veilles cyber ci-dessus.
+
+Quelques topics utiles en cyber : `cybersecurity`, `pentesting`, `red-team`,
+`blue-team`, `bug-bounty`, `threat-intelligence`, `threat-hunting`,
+`malware-analysis`, `reverse-engineering`, `forensics`, `dfir`, `ctf`,
+`osint`, `recon`, `vulnerability-scanner`, `exploit`.
 
 ## Mode texte
 

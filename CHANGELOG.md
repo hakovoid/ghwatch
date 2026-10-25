@@ -6,6 +6,33 @@ récente à la plus ancienne. Format inspiré de
 [SemVer](https://semver.org/lang/fr/) (voir « Versions et releases » dans le
 README).
 
+## [0.4.0] — 2026-10-25
+
+### Ajouté
+
+- **Thèmes de couleurs**, les mêmes que vulnkb : violet, bleu, rose, vert,
+  cyan, orange. `T` (ou `Ctrl+Y`) passe au suivant, `-theme nom` en choisit
+  un, `GHWATCH_THEME` le force pour une session.
+- Le thème et la disposition (détail à droite ou en dessous, partage
+  liste / détail) sont mémorisés d'une session à l'autre.
+- Veilles **cyber et OSINT** dans la config d'exemple : nouveautés cyber de
+  la semaine, nouveautés OSINT du mois, outils cyber et OSINT populaires et
+  actifs.
+- README : comment trouver les topics d'un nouveau sujet et en faire une veille.
+
+### Modifié
+
+- La ligne sélectionnée a un fond teinté sur toute sa largeur.
+- Le détail sépare le README par un titre de section ; la version est
+  affichée dans l'en-tête.
+
+### Corrigé
+
+- Lignes en double ou écran décalé : les emoji des descriptions et des
+  README (dont la largeur varie selon les terminaux) sont retirés à
+  l'affichage, et aucune ligne ne peut plus dépasser la largeur du terminal
+  (un seul élément trop large élargissait tout l'écran).
+
 ## [0.3.0] — 2026-10-24
 
 ### Ajouté
@@ -84,6 +111,7 @@ Première version publiée.
 - Liens cliquables (OSC 8), copie du lien (`c`), ouverture dans le navigateur.
 - Respect des limites de l'API Search avec ou sans token.
 
+[0.4.0]: https://github.com/hakovoid/ghwatch/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/hakovoid/ghwatch/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/hakovoid/ghwatch/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/hakovoid/ghwatch/releases/tag/v0.1.0
