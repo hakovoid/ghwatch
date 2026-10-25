@@ -59,6 +59,49 @@
       "created_within": "14d",
       "min_stars": 30,
       "limit": 5
+    },
+    {
+      "name": "Cyber · nouveautés de la semaine",
+      "any": [
+        "topic:cybersecurity",
+        "topic:security",
+        "topic:pentesting",
+        "topic:red-team",
+        "topic:bug-bounty",
+        "topic:threat-intelligence",
+        "topic:malware-analysis",
+        "topic:vulnerability",
+        "security in:name,description",
+        "pentest in:name,description"
+      ],
+      "created_within": "7d",
+      "min_stars": 20,
+      "limit": 30
+    },
+    {
+      "name": "OSINT · nouveautés du mois",
+      "any": [
+        "topic:osint",
+        "topic:reconnaissance",
+        "topic:recon",
+        "osint in:name,description"
+      ],
+      "created_within": "30d",
+      "min_stars": 10,
+      "limit": 30
+    },
+    {
+      "name": "Cyber & OSINT · populaires et actifs",
+      "any": [
+        "topic:cybersecurity",
+        "topic:osint",
+        "topic:pentesting",
+        "topic:red-team",
+        "topic:threat-intelligence"
+      ],
+      "pushed_within": "7d",
+      "min_stars": 2000,
+      "limit": 30
     }
   ]
 }
