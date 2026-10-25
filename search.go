@@ -6,7 +6,6 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 // Recherche GitHub ponctuelle depuis la TUI : les résultats s'affichent dans
@@ -23,10 +22,7 @@ func newSearchInput() textinput.Model {
 	ti := textinput.New()
 	ti.Prompt = "GitHub › "
 	ti.Placeholder = "ex : rag language:python stars:>100 created:>2026-09-01"
-	ti.PromptStyle = sKey
-	ti.TextStyle = sDesc
-	ti.PlaceholderStyle = sMuted
-	ti.Cursor.Style = lipgloss.NewStyle().Foreground(cAccent2)
+	styleInput(&ti, cAccent2)
 	ti.CharLimit = 200
 	return ti
 }

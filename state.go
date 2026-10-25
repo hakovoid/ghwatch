@@ -23,6 +23,26 @@ type State struct {
 	Repos   map[string]*StoredRepo          `json:"repos,omitempty"`   // full_name → derniers détails connus
 	Hits    map[string]map[string]time.Time `json:"hits,omitempty"`    // veille → full_name → dernière fois trouvé
 	Checked map[string]time.Time            `json:"checked,omitempty"` // veille → dernière vérification
+	UI      UIPrefs                         `json:"ui,omitzero"`       // préférences d'affichage de la TUI
+}
+
+// UIPrefs : réglages de la TUI retrouvés d'une session à l'autre.
+type UIPrefs struct {
+	Theme      string `json:"theme,omitempty"`
+	SideBySide bool   `json:"side_by_side,omitempty"`
+	Split      int    `json:"split,omitempty"`
+}
+
+func (s *State) prefs() UIPrefs {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.UI
+}
+
+func (s *State) setPrefs(p UIPrefs) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.UI = p
 }
 
 // StoredRepo : un dépôt tel que vu la dernière fois, avec ses marque-pages

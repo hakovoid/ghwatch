@@ -249,3 +249,75 @@ func TestResizeClamps(t *testing.T) {
 		t.Errorf("split = %d, attendu %d", m.split, splitDefault)
 	}
 }
+
+func TestDisplayTextStripsEmoji(t *testing.T) {
+	cases := map[string]string{
+		"🚀 Fast ✨ agent ❤️ by 👨‍💻 devs 🇫🇷": "Fast agent by devs",
+		"中文 description — accentuée":       "中文 description — accentuée",
+		"  indent 🔥 kept\nline ⚡ two":      "  indent kept\nline two",
+	}
+	for in, want := range cases {
+		if got := displayText(in); got != want {
+			t.Errorf("displayText(%q) = %q, attendu %q", in, got, want)
+		}
+	}
+}
+
+// Aucune ligne ne doit dépasser la largeur du terminal, quels que soient
+// l'état de l'interface et le contenu (emoji, CJK, noms très longs).
+func TestViewNeverOverflows(t *testing.T) {
+	m := testModel(t)
+	m.results[0].Items[0].Description = "🚀 让你的agent一键直出商业级产品宣传片 " + strings.Repeat("très long ", 30)
+	m.results[0].Items[1].FullName = strings.Repeat("x", 80) + "/" + strings.Repeat("y", 80)
+	states := []func(){
+		func() {}, func() { m.showHelp = true }, func() { m.filtering = true },
+		func() { m.searchMode = true }, func() { m.loading = true }, func() { m.sideBySide = true },
+		func() { m.status = strings.Repeat("statut ", 40) },
+	}
+	for si, set := range states {
+		for w := 30; w <= 200; w += 17 {
+			for h := 6; h <= 50; h += 11 {
+				m.showHelp, m.filtering, m.searchMode, m.loading, m.sideBySide, m.status = false, false, false, false, false, ""
+				m.Update(tea.WindowSizeMsg{Width: w, Height: h})
+				set()
+				for tab := 0; tab < len(m.cursor); tab++ {
+					m.tab = tab
+					lines := strings.Split(m.View(), "\n")
+					if len(lines) > h {
+						t.Fatalf("état %d, %dx%d, onglet %d : %d lignes", si, w, h, tab, len(lines))
+					}
+					for i, l := range lines {
+						if lw := lipgloss.Width(l); lw > w {
+							t.Fatalf("état %d, %dx%d, onglet %d, ligne %d : largeur %d", si, w, h, tab, i, lw)
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestThemeCycleIsRemembered(t *testing.T) {
+	m := testModel(t)
+	defer applyTheme(themes[0].name)
+	first := m.theme
+	m.Update(key("T"))
+	if m.theme == first || m.st.prefs().Theme != m.theme {
+		t.Fatalf("thème %q → %q, mémorisé %q", first, m.theme, m.st.prefs().Theme)
+	}
+	m.Update(key("v"))
+	m.Update(key("+"))
+	if p := m.st.prefs(); !p.SideBySide || p.Split != splitDefault+splitStep {
+		t.Fatalf("disposition non mémorisée : %+v", p)
+	}
+	_ = m.st.save(m.cfg.StateFile)
+	m2 := newModel(m.cfg, time.Hour)
+	if !m2.sideBySide || m2.split != splitDefault+splitStep {
+		t.Fatalf("disposition non relue : côte à côte=%v split=%d", m2.sideBySide, m2.split)
+	}
+	for _, n := range themeNames() {
+		if applyTheme(n) != n {
+			t.Errorf("thème %q non appliqué", n)
+		}
+	}
+}

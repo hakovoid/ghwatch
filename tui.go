@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -84,8 +85,9 @@ type model struct {
 	newOnly   bool
 	showHelp  bool
 
-	sideBySide bool // détail à droite de la liste plutôt qu'en dessous
-	split      int  // part de la liste en % (hauteur, ou largeur côte à côte)
+	sideBySide bool   // détail à droite de la liste plutôt qu'en dessous
+	split      int    // part de la liste en % (hauteur, ou largeur côte à côte)
+	theme      string // thème de couleurs courant
 
 	selName       string          // dépôt sélectionné au dernier rendu
 	detailOff     int             // défilement du panneau de détail
@@ -103,7 +105,9 @@ type model struct {
 	histDraft     string   // saisie en cours, retrouvée en redescendant
 }
 
-func runTUI(cfgPath, intervalOverride, token string) error {
+// runTUI lance l'interface. Thème : -theme (mémorisé), sinon GHWATCH_THEME
+// (pour cette session), sinon le dernier choisi.
+func runTUI(cfgPath, intervalOverride, token, themeName string) error {
 	cfg, interval, err := loadConfigWithInterval(cfgPath, intervalOverride)
 	if err != nil {
 		return err
@@ -112,6 +116,16 @@ func runTUI(cfgPath, intervalOverride, token string) error {
 
 	m := newModel(cfg, interval)
 	m.cfgPath, m.intervalOverride, m.token = cfgPath, intervalOverride, token
+	switch {
+	case themeName != "":
+		m.setTheme(themeName)
+		m.savePrefs()
+		_ = m.st.save(cfg.StateFile)
+	case validTheme(os.Getenv("GHWATCH_THEME")):
+		m.setTheme(os.Getenv("GHWATCH_THEME"))
+	default:
+		m.setTheme(m.st.prefs().Theme)
+	}
 	m.loadCached(time.Now())
 	if token == "" {
 		m.status = "sans GITHUB_TOKEN : 10 recherches/min, vérifications plus lentes"
@@ -127,11 +141,34 @@ func newModel(cfg *Config, interval time.Duration) *model {
 	m := &model{
 		cfg: cfg, interval: interval, spin: sp,
 		filter: newFilterInput(), searchInput: newSearchInput(),
-		split: splitDefault, st: loadState(cfg.StateFile),
+		split: splitDefault, st: loadState(cfg.StateFile), theme: themes[0].name,
 		readmePending: map[string]bool{}, readmeErr: map[string]string{},
+	}
+	if p := m.st.prefs(); p.Split != 0 {
+		m.sideBySide, m.split = p.SideBySide, min(max(p.Split, splitMin), splitMax)
 	}
 	m.resetCursors()
 	return m
+}
+
+// setTheme applique un thème à toute l'interface, champs de saisie compris.
+func (m *model) setTheme(name string) {
+	m.theme = applyTheme(name)
+	m.spin.Style = lipgloss.NewStyle().Foreground(cAccent)
+	styleInput(&m.filter, cAccent)
+	styleInput(&m.searchInput, cAccent2)
+}
+
+// savePrefs mémorise le thème et la disposition (enregistrés avec l'état).
+func (m *model) savePrefs() {
+	m.st.setPrefs(UIPrefs{Theme: m.theme, SideBySide: m.sideBySide, Split: m.split})
+}
+
+func styleInput(ti *textinput.Model, cursor lipgloss.TerminalColor) {
+	ti.PromptStyle = sKey
+	ti.TextStyle = sDesc
+	ti.PlaceholderStyle = sMuted
+	ti.Cursor.Style = lipgloss.NewStyle().Foreground(cursor)
 }
 
 // loadCached affiche tout de suite les résultats mémorisés ; GitHub n'est
@@ -161,10 +198,7 @@ func newFilterInput() textinput.Model {
 	ti := textinput.New()
 	ti.Prompt = "⌕ "
 	ti.Placeholder = "nom, description, langage, topic…"
-	ti.PromptStyle = sKey
-	ti.TextStyle = sDesc
-	ti.PlaceholderStyle = sMuted
-	ti.Cursor.Style = lipgloss.NewStyle().Foreground(cAccent)
+	styleInput(&ti, cAccent)
 	ti.CharLimit = 60
 	return ti
 }
@@ -307,6 +341,7 @@ func (m *model) resize(delta int) {
 	m.split = min(max(m.split+delta, splitMin), splitMax)
 	m.moveCursor(0) // le nombre de dépôts par page a changé
 	m.status = fmt.Sprintf("liste %d %% · détail %d %%", m.split, 100-m.split)
+	m.savePrefs()
 }
 
 func (m *model) perPage() int { return max(m.listHeight()/itemHeight, 1) }
@@ -523,13 +558,23 @@ func (m *model) update(msg tea.Msg) tea.Cmd {
 			default:
 				m.status = "vue : détail en dessous"
 			}
+			m.savePrefs()
+			return m.saveCmd()
+		case "T", "ctrl+y":
+			m.setTheme(nextTheme(m.theme))
+			m.savePrefs()
+			m.status = "thème " + m.theme + "  (" + strings.Join(themeNames(), " · ") + ")"
+			return m.saveCmd()
 		case "+":
 			m.resize(splitStep)
+			return m.saveCmd()
 		case "-":
 			m.resize(-splitStep)
+			return m.saveCmd()
 		case "=":
 			m.split = splitDefault
 			m.resize(0)
+			return m.saveCmd()
 		case "q", "ctrl+c":
 			return tea.Quit
 		case "r":
@@ -641,11 +686,25 @@ func (m *model) View() string {
 	default: // terminal trop petit : la liste seule
 		body = lipgloss.NewStyle().Height(h).MaxHeight(h).Render(m.viewList(m.width))
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, header, tabs, rule, body, footer)
+	// Assemblage ligne à ligne, chacune coupée à la largeur du terminal : une
+	// ligne trop large serait repliée par le terminal et décalerait l'écran.
+	var lines []string
+	for _, part := range []string{header, tabs, rule, body, footer} {
+		for _, l := range strings.Split(part, "\n") {
+			lines = append(lines, ansi.Truncate(l, m.width, ""))
+		}
+	}
+	if len(lines) > m.height {
+		lines = append(lines[:m.height-1], lines[len(lines)-1]) // garde le pied de page
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (m *model) viewHeader() string {
 	left := sLogo.Render("◆ ghwatch") + sBar.Render("  veille GitHub ")
+	if v := buildVersion(); !strings.ContainsAny(v, "-+") && lipgloss.Width(left)+len(v)+40 <= m.width {
+		left += sBar.Render(v + " ")
+	}
 	var right string
 	switch {
 	case m.loading:
@@ -841,16 +900,21 @@ func (m *model) viewList(width int) string {
 const statsCol = 11
 
 func (m *model) viewItem(it Item, selected bool, width int) string {
+	// La ligne sélectionnée a un fond teinté : chaque morceau le reprend.
+	var bg lipgloss.TerminalColor = lipgloss.NoColor{}
 	cursor := "  "
 	repoStyle, descStyle := sRepo, sMuted
 	if selected {
-		cursor = sCursor.Render("▌ ")
+		bg = cSelBg
+		cursor = sCursor.Render("▌") + lipgloss.NewStyle().Background(bg).Render(" ")
 		repoStyle, descStyle = sRepoSel, sDesc
 	}
+	on := func(s lipgloss.Style) lipgloss.Style { return s.Background(bg) }
+	sp := on(lipgloss.NewStyle()).Render(" ")
 	left := max(width-statsCol-1, 10) - lipgloss.Width(cursor)
 
 	owner, name, _ := strings.Cut(it.FullName, "/")
-	title := hyperlink(it.HTMLURL, sOwner.Render(owner+"/")+repoStyle.Render(name))
+	title := hyperlink(it.HTMLURL, on(sOwner).Render(owner+"/")+on(repoStyle).Render(name))
 	var badges []string
 	if it.New {
 		badges = append(badges, sNewBadge.Render("NEW"))
@@ -863,32 +927,33 @@ func (m *model) viewItem(it Item, selected bool, width int) string {
 		if later {
 			mk += "◷"
 		}
-		badges = append(badges, sMark.Render(mk))
+		badges = append(badges, on(sMark).Render(mk))
 	}
 	if it.Archived {
-		badges = append(badges, sMuted.Render("archivé"))
+		badges = append(badges, on(sMuted).Render("archivé"))
 	}
 	if len(badges) > 0 {
-		title += " " + strings.Join(badges, " ")
+		title += sp + strings.Join(badges, sp)
 	}
 
-	desc := strings.Join(strings.Fields(it.Description), " ")
+	desc := strings.Join(strings.Fields(displayText(it.Description)), " ")
 	if desc == "" {
 		desc = "pas de description"
 	}
-	meta := langBadge(it.Language) + sMuted.Render(" · "+relTime(it.CreatedAt)+" · ")
+	meta := langBadgeOn(it.Language, bg) + on(sMuted).Render(" · "+relTime(it.CreatedAt)+" · ")
 
-	stars := sStars.Render("★ " + humanStars(it.Stars))
+	stars := on(sStars).Render("★ " + humanStars(it.Stars))
 	var gain string
 	if tr := it.Trend; tr.OK && tr.Gain > 0 {
-		gain = sUp.Render("▲ " + humanGain(tr.Gain))
+		gain = on(sUp).Render("▲ " + humanGain(tr.Gain))
 	}
-	col := lipgloss.NewStyle().Width(statsCol).Align(lipgloss.Right)
+	col := on(lipgloss.NewStyle()).Width(statsCol).Align(lipgloss.Right)
+	cell := on(lipgloss.NewStyle()).Width(left)
 
-	line1 := lipgloss.NewStyle().Width(left).Render(ansi.Truncate(title, left, "…"))
-	line2 := lipgloss.NewStyle().Width(left).Render(ansi.Truncate(meta+descStyle.Render(desc), left, "…"))
-	return cursor + line1 + " " + col.Render(stars) + "\n" +
-		cursor + line2 + " " + col.Render(gain)
+	line1 := cell.Render(ansi.Truncate(title, left, "…"))
+	line2 := cell.Render(ansi.Truncate(meta+on(descStyle).Render(desc), left, "…"))
+	return cursor + line1 + sp + col.Render(stars) + "\n" +
+		cursor + line2 + sp + col.Render(gain)
 }
 
 func (m *model) viewDetail(width, height int) string {
@@ -924,7 +989,7 @@ func (m *model) viewDetail(width, height int) string {
 	}
 	title += "   " + marks
 
-	desc := strings.TrimSpace(it.Description)
+	desc := strings.TrimSpace(displayText(it.Description))
 	if desc == "" {
 		desc = sMuted.Render("Pas de description.")
 	}
@@ -1009,11 +1074,11 @@ func (m *model) viewDetail(width, height int) string {
 
 // viewReadme : début du README, chargé à la demande puis mémorisé.
 func (m *model) viewReadme(it Item, width int) string {
-	head := sMuted.Render("README")
+	head := sSection.Render("README") + " " + sRule.Render(strings.Repeat("─", max(width-7, 0)))
 	text, _ := m.st.readme(it.FullName, time.Now())
 	switch {
 	case text != "":
-		return head + "\n" + sDesc.Render(ansi.Wordwrap(text, width, " "))
+		return head + "\n" + sDesc.Render(ansi.Wordwrap(displayText(text), width, " "))
 	case m.readmePending[it.FullName]:
 		return head + "\n" + sMuted.Render("chargement…")
 	case m.readmeErr[it.FullName] != "":
@@ -1072,7 +1137,7 @@ func (m *model) viewFooter() string {
 	}
 	keys := []struct{ k, v string }{
 		{"↑↓", "naviguer"}, {"←→", "veilles"}, {"⏎", "ouvrir"}, {"/", "filtrer"},
-		{"f", "favori"}, {"a", "à voir"}, {"S", "chercher"}, {"s", "trier"}, {"+-", "taille"}, {"r", "actualiser"}, {"?", "aide"}, {"q", "quitter"},
+		{"f", "favori"}, {"a", "à voir"}, {"S", "chercher"}, {"s", "trier"}, {"+-", "taille"}, {"T", "thème"}, {"r", "actualiser"}, {"?", "aide"}, {"q", "quitter"},
 	}
 	if m.width < 140 { // terminal étroit : l'essentiel, le reste est dans l'aide
 		keys = []struct{ k, v string }{
@@ -1128,6 +1193,7 @@ func (m *model) viewHelp() string {
 			{"+  -", "agrandir / réduire la liste"},
 			{"=", "partage par défaut"},
 			{"J  K", "faire défiler le détail"},
+			{"T", "changer le thème de couleurs"},
 		}},
 		{"", [][2]string{{"?", "aide"}, {"q  ctrl+c", "quitter"}}},
 	}

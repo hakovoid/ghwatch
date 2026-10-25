@@ -9,6 +9,7 @@
 //	ghwatch -all                 # affiche aussi les dépôts déjà vus
 //	ghwatch -tui                 # interface interactive dans le terminal
 //	ghwatch -version             # version installée
+//	ghwatch -tui -theme vert     # thème de couleurs (mémorisé)
 package main
 
 import (
@@ -17,6 +18,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -29,6 +31,7 @@ func main() {
 	tui := flag.Bool("tui", false, "interface interactive dans le terminal")
 	flag.BoolVar(&linksEnabled, "links", true, "liens cliquables dans la TUI (désactiver si le terminal affiche des caractères parasites)")
 	showVersion := flag.Bool("version", false, "afficher la version et quitter")
+	themeFlag := flag.String("theme", "", "thème de couleurs de la TUI, mémorisé ("+strings.Join(themeNames(), ", ")+")")
 	flag.Parse()
 
 	if *showVersion {
@@ -36,8 +39,11 @@ func main() {
 		return
 	}
 
+	if *themeFlag != "" && !validTheme(*themeFlag) {
+		log.Fatalf("thème inconnu %q : %s", *themeFlag, strings.Join(themeNames(), ", "))
+	}
 	if *tui {
-		if err := runTUI(*cfgPath, *intervalFlag, os.Getenv("GITHUB_TOKEN")); err != nil {
+		if err := runTUI(*cfgPath, *intervalFlag, os.Getenv("GITHUB_TOKEN"), *themeFlag); err != nil {
 			log.Fatal(err)
 		}
 		return

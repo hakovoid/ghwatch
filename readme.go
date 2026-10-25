@@ -62,7 +62,7 @@ func readmeText(md string, max int) string {
 		out = append(out, line)
 		blank = false
 	}
-	s = strings.TrimSpace(strings.Join(out, "\n"))
+	s = strings.TrimSpace(displayText(strings.Join(out, "\n")))
 
 	if r := []rune(s); len(r) > max {
 		s = string(r[:max])
